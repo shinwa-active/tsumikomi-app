@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>横持ち管理システム</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--blue:#2563eb;--amber:#fbbf24;--green:#059669;--teal:#0d9488;--red:#dc2626;--slate:#1e293b;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:system-ui,sans-serif;margin:0;background:#f1f5f9;color:#1e293b;}
+  #app{max-width:480px;margin:0 auto;min-height:100vh;background:#f1f5f9;padding-bottom:90px;position:relative;}
+  .topbar{background:#1e293b;color:#fff;display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:13px;flex-wrap:wrap;}
+  .pill{padding:5px 12px;border-radius:999px;font-weight:bold;border:none;font-size:13px;background:#334155;color:#fff;}
+  .pill.on{background:var(--amber);color:#1e293b;}
+  .header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;height:54px;display:flex;align-items:center;gap:8px;padding:0 12px;z-index:10;}
+  .header .title{font-weight:bold;font-size:18px;}
+  .back{background:none;border:none;font-size:24px;padding:4px 8px;}
+  .pad{padding:16px;}
+  label{display:block;font-weight:bold;margin:12px 0 6px;}
+  input,textarea,select{width:100%;padding:14px;font-size:16px;border:2px solid #e2e8f0;border-radius:12px;outline:none;}
+  input:focus,textarea:focus{border-color:var(--blue);}
+  .btn{display:block;width:100%;padding:18px;font-size:18px;font-weight:bold;border:none;border-radius:16px;color:#fff;background:var(--blue);margin-top:10px;}
+  .btn.amber{background:var(--amber);color:#1e293b;font-size:22px;padding:28px;}
+  .btn.green{background:var(--green);}
+  .btn.teal{background:var(--teal);}
+  .btn.ghost{background:#fff;color:#1e293b;border:2px solid #e2e8f0;}
+  .btn.small{padding:12px;font-size:15px;width:auto;}
+  .chip{display:inline-block;padding:8px 12px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:14px;margin:4px 4px 0 0;border:none;}
+  .chip.on{background:var(--blue);color:#fff;}
+  .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-bottom:10px;display:flex;gap:12px;width:100%;text-align:left;}
+  .badge{padding:4px 10px;border-radius:999px;font-size:13px;font-weight:bold;}
+  .b-green{background:#d1fae5;color:#065f46;} .b-amber{background:#fef3c7;color:#92400e;}
+  .b-red{background:#fee2e2;color:#991b1b;} .b-teal{background:#ccfbf1;color:#115e59;}
+  .thumb{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#e2e8f0;flex-shrink:0;}
+  .row{display:flex;padding:12px 0;border-bottom:1px solid #f1f5f9;}
+  .row .k{width:110px;color:#64748b;font-size:14px;flex-shrink:0;}
+  .panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px;margin-bottom:12px;}
+  .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;display:flex;}
+  .tab{flex:1;padding:10px;text-align:center;color:#94a3b8;background:none;border:none;font-size:12px;font-weight:bold;}
+  .tab.on{color:var(--blue);}
+  .tab .ic{font-size:22px;display:block;}
+  .toast{position:fixed;bottom:100px;left:0;right:0;max-width:480px;margin:0 auto;padding:0 16px;z-index:50;}
+  .toast .in{background:#0f172a;color:#fff;border-radius:12px;padding:14px;text-align:center;font-weight:bold;}
+  .stat{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;}
+  .stat .n{font-size:30px;font-weight:800;}
+  .bar{height:24px;border-radius:999px;background:#3b82f6;color:#fff;font-size:13px;font-weight:bold;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;min-width:24px;}
+  .err{color:var(--red);font-weight:bold;margin-top:8px;text-align:center;}
+  .hint{color:#94a3b8;font-size:12px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .center{display:flex;align-items:center;justify-content:center;min-height:70vh;flex-direction:column;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ===== ① https://rlvoptkbeayclspbbkhs.supabase.cosb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t ===== */
+const SUPABASE_URL = "https://rlvoptkbeayclspbbkhs.supabase.co";
+const SUPABASE_KEY = "sb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t";
+/* ============================================================================ */
+
+function _ck(s){ let x=5381; for(let i=0;i<s.length;i++){ x=((x*33)^s.charCodeAt(i))>>>0; } return x; }
+const ADMIN_HASH = 1081415813;
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ---- 文言（日本語 / English） ---- */
+const T = {
+ ja:{worker:"作業者",manager:"管理者",worksOffline:"オフライン対応",logout:"ログアウト",
+   homeTitle:"積込の記録",today:"本日の登録",ken:"件",capture:"積込を撮影して登録",viewList:"登録した一覧を見る",
+   offlineNote:"電波が切れても、つながり次第まとめて送られます。",
+   regTitle:"積込を登録",photos:"写真（1〜3枚）",take:"写真を撮る/選ぶ",
+   fDest:"納品先",fTruck:"車番",fPallets:"パレット数",fComment:"コメント（任意）",
+   phDest:"例）尼崎第一倉庫",phTruck:"例）なにわ100あ12-34",phPallets:"例）8",phComment:"気づいたこと",
+   coursesLabel:"コース看板",qrScan:"QR",qrHint:"候補からTapして選ぶ、候補に無い時は手入力します。",
+   phCode:"コード",add:"追加",totalPl:n=>`合計 ${n} PL`,
+   check:"確認してください",save:"登録する",saving:"登録中…",saved:"登録しました。全員に共有されます",
+   listTitle:"登録一覧",done:"完了",pending:"未完了",reqcheck:"要確認",destShort:"納品先✓",noTruck:"車番なし",noDest:"（納品先なし）",
+   by:(w,p)=>`担当 ${w}・${p}パレット`,
+   detailTitle:"積込の詳細",loadedAt:t=>`積込完了 ${t}`,recvAt:t=>`納品先完了 ${t}`,
+   iWorker:"担当者",iPhoto:"撮影/登録",iComment:"コメント",none:"（なし）",pl:n=>`${n} パレット`,
+   complete:"積込完了",courseList:"コース看板リスト",tapCheck:"現物を確認したらタップ",
+   destSection:"納品先での確認",destBtn:"納品先で確認（完了にする）",destQ:"写真と現物は合っていますか？「納品先完了」にします。",checkAll:"先に全コースにチェックを入れてください",
+   edit:"直す",del:"消す",delQ:"この記録を消しますか？（管理者のみ）",
+   dashTitle:"ダッシュボード",sToday:"本日の積込",sPending:"未完了",sRecv:"納品先未完了",sWorkers:"担当者数",byWorker:"担当者別（本日）",
+   searchTitle:"検索",fDate:"日付",all:"すべて",results:n=>`${n} 件`,csv:"CSVで出す",csvDone:"CSVを書き出しました",
+   histTitle:"履歴",byTruck:"車番別",byDest:"納品先別",choose:"選んでください",back:"選びなおす",loadings:n=>`${n} 件`,
+   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"車番",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・車番が、撮影画面の候補に出ます（この端末に保存）。",
+   candTitle3:"DC3行き",candTitle1:"DC1行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
+   tHome:"ホーム",tList:"一覧",tDash:"集計",tSearch:"検索",tHist:"履歴",tMaster:"マスタ",settings:"設定",language:"言語",
+   loginTitle:"積込証跡管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
+   loading:"読み込み中…",you:"あなた"},
+ en:{worker:"Worker",manager:"Manager",worksOffline:"Works offline",logout:"Log out",
+   homeTitle:"Loading records",today:"Today",ken:"",capture:"Take photos & save",viewList:"View all records",
+   offlineNote:"Even with no signal, records send once you're back online.",
+   regTitle:"New record",photos:"Photos (1–3)",take:"Take / choose photo",
+   fDest:"Destination",fTruck:"Truck number",fPallets:"Pallets",fComment:"Comment (optional)",
+   phDest:"e.g. Amagasaki WH 1",phTruck:"e.g. Naniwa 100 A 12-34",phPallets:"e.g. 8",phComment:"Anything you noticed",
+   coursesLabel:"Course signs",qrScan:"QR",qrHint:"Tap a candidate to add; type manually if missing or mixed.",
+   phCode:"Code",add:"Add",totalPl:n=>`Total ${n} PL`,
+   check:"Please check",save:"Save record",saving:"Saving…",saved:"Saved. Shared with everyone.",
+   listTitle:"All records",done:"Done",pending:"Pending",reqcheck:"Check",destShort:"Received",noTruck:"No truck",noDest:"(No destination)",
+   by:(w,p)=>`By ${w} · ${p} pallets`,
+   detailTitle:"Details",loadedAt:t=>`Loaded ${t}`,recvAt:t=>`Received ${t}`,
+   iWorker:"Worker",iPhoto:"Photo / logged",iComment:"Comment",none:"(none)",pl:n=>`${n} pallets`,
+   complete:"Mark as loaded",courseList:"Course signs",tapCheck:"Tap once checked",
+   destSection:"Check at destination",destBtn:"Confirm at destination",destQ:"Do the photos match the goods? Mark as received.",checkAll:"Check off all courses first",
+   edit:"Edit",del:"Delete",delQ:"Delete this record? (Managers only)",
+   dashTitle:"Dashboard",sToday:"Loadings",sPending:"Pending",sRecv:"Not received",sWorkers:"Workers",byWorker:"By worker (today)",
+   searchTitle:"Search",fDate:"Date",all:"All",results:n=>`${n} records`,csv:"Export CSV",csvDone:"CSV exported",
+   histTitle:"History",byTruck:"By truck",byDest:"By destination",choose:"Choose",back:"Back",loadings:n=>`${n} loadings`,
+   masterTitle:"Master data",mDest:"Destinations",mTruck:"Trucks",mAdd:"Add",mSave:"Save",mDelQ:"Delete?",mEmpty:"None",mNote:"These appear as suggestions when capturing (saved on this device).",
+   candTitle3:"To DC3",candTitle1:"To DC1",mCourseNote:"These course codes appear as candidates when capturing (saved on this device).",
+   tHome:"Home",tList:"List",tDash:"Stats",tSearch:"Search",tHist:"History",tMaster:"Master",settings:"Settings",language:"Language",
+   loginTitle:"Loading Evidence System",loginSub:"Please log in.",email:"Email",pass:"Password",login:"Log in",loggingIn:"Checking…",loginNg:"Cannot log in: ",
+   loading:"Loading…",you:"You"}
+};
+
+/* ---- 状態 ---- */
+let lang = localStorage.getItem("lang") || "ja";
+let role = "worker";
+let adminAuthed = false;
+let user = null;
+let records = [];
+let view = {name:"home"};
+let signedCache = {};
+const app = document.getElementById("app");
+function t(){ return T[lang]; }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
+
+/* ---- マスタ（この端末に保存） ---- */
+function getMaster(k){ try{return JSON.parse(localStorage.getItem("m_"+k)||"[]");}catch(e){return [];} }
+function setMaster(k,arr){ localStorage.setItem("m_"+k,JSON.stringify(arr)); }
+const COURSE_DC3_DEFAULT=["AH","AG","7P","7Q","7R","AA","2P","2N","BA","BB","BF","9A","9B","9C","9F","4P","4T","4E","4F","4R","5D","3P","3サ","3シ","3X","3C","3D","0A","0B","0C","0D","0G","1E","1B","1C"];
+const COURSE_DC1_DEFAULT=["4＋","4＆","3％","3－","3！","3＃","3＆","3＊","3：","3＋","3＄","4－","4＊","4／","4：","4％","4＞","4”","4！","4＃","4＄","PKD","PQD","PKT","AU0","QQY","セケ1","PQT","LD","チ＠","ナ＠","L","ト＠","ツ＠","ノS","ア＠","イ＠","ウ＠","エ＠","オ＠","カ＠","キ＠","ク＠","ケ＠","コ＠","サ＠","シ＠","ス＠","セ＠","ソ＠","タ＠","テ＠","ヌ＠","ネ＠","ノ＠","ハ＠","フ＠","ヒ＠","ヘ＠","マ＠","ラ＠","ホ＠","J＠","5E","5Q","5R","6B","6S","6T","8A","LK","2L","5F","5G","ウ＃","0V"];
+function ensureCourseDefaults(){
+  if(localStorage.getItem("m_course_dc3")===null) setMaster("course_dc3",COURSE_DC3_DEFAULT);
+  if(localStorage.getItem("m_course_dc1")===null) setMaster("course_dc1",COURSE_DC1_DEFAULT);
+}
+function suggest(kind){
+  const fromRec = [...new Set(records.map(r=> kind==="dest"?r.destination:r.truck).filter(Boolean))];
+  const m = getMaster(kind);
+  return [...new Set([...m,...fromRec])];
+}
+
+/* ---- 日付ラベル ---- */
+function dayLabel(iso){
+  const d=new Date(iso), n=new Date();
+  const same=(a,b)=>a.getFullYear()==b.getFullYear()&&a.getMonth()==b.getMonth()&&a.getDate()==b.getDate();
+  const y=new Date(n); y.setDate(n.getDate()-1);
+  if(same(d,n)) return lang==="ja"?"本日":"Today";
+  if(same(d,y)) return lang==="ja"?"昨日":"Yesterday";
+  return (d.getMonth()+1)+"/"+d.getDate();
+}
+function hhmm(iso){ const d=new Date(iso); return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }
+function isToday(iso){ const d=new Date(iso),n=new Date(); return d.getFullYear()==n.getFullYear()&&d.getMonth()==n.getMonth()&&d.getDate()==n.getDate(); }
+
+/* ---- 写真の表示URL（非公開バケットなので署名URLを使う） ---- */
+async function urlFor(path){
+  if(signedCache[path]) return signedCache[path];
+  try{ const {data}=await sb.storage.from("photos").createSignedUrl(path,3600); if(data&&data.signedUrl){signedCache[path]=data.signedUrl; return data.signedUrl;} }catch(e){}
+  return null;
+}
+
+/* ---- データ取得 ---- */
+async function loadRecords(){
+  const {data,error}=await sb.from("load_records").select("*, courses(*), photos(*)").order("created_at",{ascending:false});
+  if(error){ console.error(error); return; }
+  records = data||[];
+  render();
+}
+let yoku=[];
+function todayStr(){ const n=new Date(); return n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-"+("0"+n.getDate()).slice(-2); }
+function ydone(r){ return r.done===true && r.done_date===todayStr(); }
+async function loadYoko(){
+  const {data,error}=await sb.from("yokomochi_status").select("*").order("sort_order",{ascending:true});
+  if(error){ console.error(error); return; }
+  yoku=data||[];
+  if(view.name==="home") render();
+}
+async function toggleYoko(id){
+  const row=yoku.find(x=>x.id===id); if(!row) return;
+  if(!ydone(row)){
+    if(!confirm((lang==="ja"?"完了にします：\n\n":"Mark as done:\n\n")+row.label+(lang==="ja"?"\n\nよろしいですか？":"\n\nOK?"))) return;
+    await sb.from("yokomochi_status").update({done:true,done_at:new Date().toISOString(),done_date:todayStr(),updated_at:new Date().toISOString()}).eq("id",id);
+  } else {
+    if(!confirm((lang==="ja"?"完了を取り消します：\n\n":"Undo completion:\n\n")+row.label+(lang==="ja"?"\n\nよろしいですか？":"\n\nOK?"))) return;
+    await sb.from("yokomochi_status").update({done:false,done_at:null,done_date:null,updated_at:new Date().toISOString()}).eq("id",id);
+  }
+  await loadYoko();
+}
+let pal=[];
+function palBase(r){ return r.updated_date===todayStr() ? (r.remain||0) : 0; }
+function palTime(r){ return (r.updated_date===todayStr() && r.updated_at) ? hhmm(r.updated_at) : null; }
+async function loadPal(){
+  const {data,error}=await sb.from("pallet_remain").select("*").order("sort_order",{ascending:true});
+  if(error){ console.error(error); return; }
+  pal=data||[];
+  if(view.name==="pallet"||view.name==="home") render();
+}
+async function palAdjust(id,delta){
+  const row=pal.find(x=>x.id===id); if(!row) return;
+  let v=palBase(row)+delta; if(v<0) v=0;
+  await sb.from("pallet_remain").update({remain:v,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",id);
+  await loadPal();
+}
+function renderPallet(){
+  const rowHtml=r=>{ const n=palBase(r); const tm=palTime(r);
+    return `<div class="panel" style="margin-bottom:10px">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <b style="font-size:16px">${esc(r.label)}</b>
+        <span style="margin-left:auto;color:#94a3b8;font-size:12px">${tm?(lang==="ja"?tm+" 時点":tm):(lang==="ja"?"未更新":"—")}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <button onclick="palAdjust(${r.id},-5)" style="flex:1;background:#fee2e2;color:#b91c1c;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">−5</button>
+        <button onclick="palAdjust(${r.id},-1)" style="flex:1;background:#fecaca;color:#991b1b;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">−1</button>
+        <div style="flex:1.4;text-align:center"><span style="font-size:30px;font-weight:800;color:#0d9488">${n}</span><span style="font-size:14px;color:#64748b"> P/L</span></div>
+        <button onclick="palAdjust(${r.id},1)" style="flex:1;background:#bbf7d0;color:#166534;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">＋1</button>
+        <button onclick="palAdjust(${r.id},5)" style="flex:1;background:#86efac;color:#14532d;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">＋5</button>
+      </div>
+    </div>`; };
+  const total=pal.reduce((s,r)=>s+palBase(r),0);
+  app.innerHTML=topbar()+header(lang==="ja"?"パレット残数":"Pallets left","go('home')")+`<div class="pad">
+    <div class="panel" style="background:#f0fdfa;border:none;color:#115e59;text-align:center"><div style="font-size:13px">${lang==="ja"?"残り合計":"Total left"}</div><div style="font-size:30px;font-weight:800">${total}<span style="font-size:15px"> P/L</span></div></div>
+    ${pal.map(rowHtml).join("")}
+    <p class="hint">${lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。全ドライバーで共有され、翌日は自動でゼロに戻ります。":"Adjust with +/-; time auto-records. Shared with all; resets next day."}</p>
+  </div>`+tabbar();
+}
+function openPhoto(i){
+  const u=(window._photoUrls||[])[i]; if(!u) return;
+  const ov=document.createElement("div");
+  ov.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:12px";
+  ov.onclick=()=>ov.remove();
+  ov.innerHTML=`<img src="${u}" style="max-width:98%;max-height:82%;border-radius:10px;object-fit:contain"><button style="margin-top:18px;background:#fff;border:none;border-radius:12px;padding:14px 28px;font-size:16px;font-weight:bold">${lang==="ja"?"閉じる":"Close"}</button>`;
+  document.body.appendChild(ov);
+}
+
+/* ===================== 認証 ===================== */
+async function start(){
+  ensureCourseDefaults();
+  app.innerHTML = `<div class="center"><div>${t().loading}</div></div>`;
+  const {data}=await sb.auth.getSession();
+  if(data&&data.session){ user=data.session.user; await afterLogin(); }
+  else renderLogin();
+}
+function renderLogin(){
+  app.innerHTML = `<div class="pad" style="padding-top:48px;">
+    <h1>${t().loginTitle}</h1><p>${t().loginSub}</p>
+    <input id="email" type="email" placeholder="${t().email}" autocomplete="username">
+    <input id="pass" type="password" placeholder="${t().pass}" autocomplete="current-password" style="margin-top:10px;">
+    <button class="btn" id="loginBtn">${t().login}</button>
+    <div id="loginMsg" class="err"></div>
+  </div>`;
+  document.getElementById("loginBtn").onclick=doLogin;
+  document.getElementById("pass").onkeydown=e=>{ if(e.key==="Enter") doLogin(); };
+}
+async function doLogin(){
+  const email=document.getElementById("email").value.trim();
+  const pass=document.getElementById("pass").value;
+  const msg=document.getElementById("loginMsg"); msg.style.color="#64748b"; msg.textContent=t().loggingIn;
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  if(error){ msg.style.color="#dc2626"; msg.textContent=t().loginNg+error.message; return; }
+  const {data}=await sb.auth.getSession(); user=data.session.user;
+  await afterLogin();
+}
+async function afterLogin(){
+  await loadRecords();
+  await loadYoko();
+  await loadPal();
+  sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"load_records"},loadRecords)
+    .on("postgres_changes",{event:"*",schema:"public",table:"courses"},loadRecords)
+    .on("postgres_changes",{event:"*",schema:"public",table:"yokomochi_status"},loadYoko)
+    .on("postgres_changes",{event:"*",schema:"public",table:"pallet_remain"},loadPal).subscribe();
+}
+async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; renderLogin(); }
+
+/* ===================== 画面描画 ===================== */
+function go(name,params){ view=Object.assign({name},params||{}); render(); window.scrollTo(0,0); }
+function topbar(){
+  return `<div class="topbar">
+    <span style="opacity:.7">${lang==="ja"?"あなたは":"You are"}</span>
+    <button class="pill ${role==="worker"?"on":""}" onclick="enterWorker()">${t().worker}</button>
+    <button class="pill ${role==="admin"?"on":""}" onclick="enterAdmin()">${t().manager}</button>
+    <button class="pill" style="margin-left:auto" onclick="go('settings')">⚙ ${lang==="ja"?"日本語":"EN"}</button>
+  </div>`;
+}
+function header(title,back){
+  return `<div class="header">${back?`<button class="back" onclick="${back}">‹</button>`:""}<div class="title">${esc(title)}</div>
+    <div style="margin-left:auto;color:#94a3b8;font-size:12px">📶 ${t().worksOffline}</div></div>`;
+}
+function tabbar(){
+  const tabs = role==="worker"
+    ? [["home","🏠",t().tHome],["list","📋",t().tList]]
+    : [["dashboard","📊",t().tDash],["search","🔍",t().tSearch],["history","🕘",t().tHist],["master","🗂",t().tMaster]];
+  return `<div class="tabbar">${tabs.map(([k,ic,l])=>`<button class="tab ${view.name===k?"on":""}" onclick="go('${k}')"><span class="ic">${ic}</span>${l}</button>`).join("")}</div>`;
+}
+function enterWorker(){ role="worker"; adminAuthed=false; go("home"); }
+function enterAdmin(){ if(adminAuthed){role="admin";go("dashboard");} else { const p=prompt(lang==="ja"?"管理者パスワード":"Manager password"); if(p!=null && _ck(p)===ADMIN_HASH){adminAuthed=true;role="admin";go("dashboard");} else if(p!=null){ toast(lang==="ja"?"パスワードが違います":"Wrong password"); } } }
+
+function badges(r){
+  let h="";
+  h+= r.completed?`<span class="badge b-green">${t().done}</span>`:`<span class="badge b-amber">${t().pending}</span>`;
+  if(r.dest_confirmed) h+=` <span class="badge b-teal">${t().destShort}</span>`;
+  if(r.anomaly_logs&&false){} // anomalies shown via flag below
+  return h;
+}
+async function recordCard(r){
+  let thumb=`<div class="thumb"></div>`;
+  if(r.photos&&r.photos.length){ const u=await urlFor(r.photos[0].storage_path); if(u) thumb=`<img class="thumb" src="${u}">`; }
+  return `<button class="card" onclick="go('detail',{id:'${r.id}'})">${thumb}
+    <div style="min-width:0;flex:1">
+      <div>${badges(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span></div>
+      <div style="font-weight:bold">${esc(r.destination||t().noDest)}</div>
+      <div style="color:#64748b;font-size:14px">${esc(r.truck||t().noTruck)}</div>
+      <div style="color:#64748b;font-size:14px">${t().by(esc(r.worker_name||""),r.pallets||0)}</div>
+    </div></button>`;
+}
+async function listHtml(arr){ const parts=await Promise.all(arr.map(recordCard)); return parts.join(""); }
+
+async function render(){
+  if(!user){ return; }
+  let body="";
+  if(view.name==="home"){
+    const todays=records.filter(r=>isToday(r.created_at));
+    const pr=yoku.filter(r=>r.priority), no=yoku.filter(r=>!r.priority);
+    const prDone=pr.filter(ydone).length, allDone=yoku.filter(ydone).length;
+    const ybtn=r=>{ const d=ydone(r); return `<button onclick="toggleYoko(${r.id})" style="width:100%;text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:13px;margin-top:8px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">${d?"✅":(r.priority?"🔴":"⬜")}</span>
+        <span style="flex:1;font-weight:bold;font-size:15px">${esc(r.label)}</span>
+        ${d?`<span style="color:#15803d;font-weight:bold;font-size:13px">${hhmm(r.done_at)} ${lang==="ja"?"完了":"done"}</span>`:""}
+      </button>`; };
+    const board=`<div class="panel" style="margin-top:14px">
+      <b>🚚 ${lang==="ja"?"横持ち 本日の進捗":"Yokomochi today"}</b>
+      <div style="display:flex;gap:8px;margin:10px 0">
+        <div style="flex:1;background:#fff7ed;border-radius:10px;padding:8px;text-align:center"><div class="hint">${lang==="ja"?"急ぎ":"Priority"}</div><div style="font-weight:800;font-size:20px;color:#c2410c">${prDone}/${pr.length}</div></div>
+        <div style="flex:1;background:#f0fdf4;border-radius:10px;padding:8px;text-align:center"><div class="hint">${lang==="ja"?"全体":"All"}</div><div style="font-weight:800;font-size:20px;color:#15803d">${allDone}/${yoku.length}</div></div>
+      </div>
+      <div style="font-weight:bold;color:#c2410c;margin-top:4px">${lang==="ja"?"第一優先（急ぎ）":"Priority"}</div>
+      ${pr.map(ybtn).join("")}
+      <div style="font-weight:bold;color:#475569;margin-top:14px">${lang==="ja"?"通常":"Normal"}</div>
+      ${no.map(ybtn).join("")}
+      <p class="hint" style="margin-top:8px">${lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day."}</p>
+    </div>`;
+    const palTotal=pal.reduce((s,r)=>s+palBase(r),0);
+    body=header(t().homeTitle)+`<div class="pad">
+      <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
+      <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
+        <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a;text-align:center;display:flex;flex-direction:column;justify-content:center"><div style="font-size:13px">${t().today}</div><div style="font-size:24px;font-weight:800">${todays.length}<span style="font-size:14px"> ${t().ken}</span></div></div>
+        <button class="btn ghost" style="flex:1;margin:0" onclick="go('list')">📋 ${t().viewList}</button>
+      </div>
+      <button class="btn teal" style="margin-top:10px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット残数":"Pallets left"}　${lang==="ja"?"残り合計":"total"} ${palTotal} P/L</button>
+      ${board}
+      <button class="btn ghost small" style="margin:16px auto 0;width:auto" onclick="logout()">${t().logout}</button>
+    </div>`;
+    app.innerHTML=topbar()+body+tabbar();
+  }
+  else if(view.name==="register"){ renderRegister(); return; }
+  else if(view.name==="pallet"){ renderPallet(); return; }
+  else if(view.name==="list"){
+    app.innerHTML=topbar()+header(t().listTitle,role==="worker"?"go('home')":null)+`<div class="pad" id="lst">${t().loading}</div>`+tabbar();
+    document.getElementById("lst").innerHTML=await listHtml(records);
+  }
+  else if(view.name==="detail"){ renderDetail(view.id); return; }
+  else if(view.name==="dashboard"){ renderDashboard(); }
+  else if(view.name==="search"){ renderSearch(); return; }
+  else if(view.name==="history"){ renderHistory(); return; }
+  else if(view.name==="master"){ renderMaster(); return; }
+  else if(view.name==="settings"){ renderSettings(); return; }
+}
+
+/* ---------- 登録 ---------- */
+let regPhotos=[], regCourses=[];
+function renderRegister(){
+  regPhotos.length=0; regCourses.length=0; mix=null;
+  app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
+    <label>${t().photos}</label>
+    <div id="photoArea" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+    <input id="file" type="file" accept="image/*" capture="environment" multiple style="display:none">
+    <button class="btn ghost" style="margin-top:8px" onclick="document.getElementById('file').click()">📷 ${t().take}</button>
+
+    <label>${t().fDest}</label><input id="dest" placeholder="${t().phDest}">
+    <div id="sgDest"></div>
+    <label>${t().fTruck}</label><input id="truck" placeholder="${t().phTruck}">
+    <div id="sgTruck"></div>
+    <label>${t().fPallets}</label><input id="pallets" inputmode="numeric" placeholder="${t().phPallets}">
+
+    <label>${t().coursesLabel}</label>
+    <p class="hint">${t().qrHint}</p>
+    <div id="candArea" style="margin-top:10px"></div>
+    <div id="courseList"></div>
+
+    <label>${t().fComment}</label><input id="comment" placeholder="${t().phComment}">
+    <div id="anom"></div>
+  </div>
+  <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
+    <button class="btn" id="saveBtn" onclick="saveRecord()">✔ ${t().save}</button>
+  </div>`;
+  document.getElementById("file").onchange=onFiles;
+  document.getElementById("dest").oninput=document.getElementById("truck").oninput=document.getElementById("pallets").oninput=updateAnom;
+  drawSuggest(); drawCandidates(); drawCourses(); updateAnom();
+}
+let mix=null; // {key, picks:[]}
+function drawCandidates(){
+  const area=document.getElementById("candArea"); if(!area) return;
+  const grp=(key,title)=>{
+    const arr=getMaster(key); if(!arr.length) return "";
+    const inMix = mix && mix.key===key;
+    const head=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div style="font-weight:bold;font-size:14px;color:#475569">${title}${inMix?"":"（"+(lang==="ja"?"押すと追加":"tap to add")+"）"}</div>
+        <button class="chip" style="margin-left:auto;${inMix?"background:#7c3aed;color:#fff":"background:#ede9fe;color:#6d28d9"}" onclick="mixToggle('${key}')">${inMix?(lang==="ja"?"混載やめる":"cancel"):(lang==="ja"?"＋混載":"mix")}</button>
+      </div>`;
+    const pickBar = inMix?`<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:8px;margin-bottom:6px">
+        <div style="font-size:12px;color:#6d28d9;margin-bottom:4px">${lang==="ja"?"同じパレットに混ぜるコースを選ぶ（合計で1PL）":"pick courses for one pallet (1 PL)"}</div>
+        <div>${mix.picks.length?mix.picks.map((c,idx)=>`<button class="chip" style="background:#7c3aed;color:#fff" onclick="mixRemove(${idx})">${esc(c)} ×</button>`).join(""):`<span style="color:#a78bfa;font-size:13px">${lang==="ja"?"未選択":"none"}</span>`}</div>
+        <button class="btn small" style="width:100%;margin-top:8px;background:#7c3aed;color:#fff;${mix.picks.length<2?"opacity:.5":""}" onclick="mixConfirm()">${lang==="ja"?"この組み合わせで1PL追加":"Add as 1 PL"}</button>
+      </div>`:"";
+    const fn = inMix?"mixPick":"addCand";
+    return `<div style="margin-bottom:8px">${head}${pickBar}
+      <div style="max-height:150px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
+      ${arr.map((v,i)=>`<button class="chip" onclick="${fn}('${key}',${i})">${esc(v)}</button>`).join("")}</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
+        <input id="cPl_${key}" inputmode="numeric" placeholder="PL" style="width:56px;text-align:center">
+        <button class="btn small" style="padding:0 14px" onclick="addCourseG('${key}')">＋</button>
+      </div>
+      <div id="csel_${key}"></div></div>`;
+  };
+  area.innerHTML=grp("course_dc3",t().candTitle3)+grp("course_dc1",t().candTitle1);
+  drawCourses();
+}
+function addCand(key,i){ const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
+function mixToggle(key){ mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
+function mixPick(key,i){ if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
+function mixRemove(idx){ if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
+function mixConfirm(){ if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
+function drawSuggest(){
+  const mk=(arr,inp)=>arr.map(v=>`<button class="chip" onclick="document.getElementById('${inp}').value=${JSON.stringify(v).replace(/"/g,'&quot;')};updateAnom()">${esc(v)}</button>`).join("");
+  document.getElementById("sgDest").innerHTML=mk(suggest("dest"),"dest");
+  document.getElementById("sgTruck").innerHTML=mk(suggest("truck"),"truck");
+}
+function onFiles(e){ const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
+function drawPhotos(){
+  const a=document.getElementById("photoArea");
+  a.innerHTML=regPhotos.map((f,i)=>`<div style="position:relative"><img class="thumb" style="width:80px;height:80px" src="${URL.createObjectURL(f)}"><button onclick="regPhotos.splice(${i},1);drawPhotos();updateAnom()" style="position:absolute;top:-8px;right:-8px;background:#dc2626;color:#fff;border:none;border-radius:999px;width:24px;height:24px">×</button></div>`).join("");
+}
+let qrScanner=null, qrLast="", qrLastT=0, qrBeep=false, qrVibe=false, qrSession=[], qrAudio=null;
+let qrStream=null, qrLoop=null, qrVideo=null, qrDetector=null;
+function qrToggle(which){
+  if(which==="beep"){ qrBeep=!qrBeep; if(qrBeep&&!qrAudio){ try{qrAudio=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } }
+  if(which==="vibe") qrVibe=!qrVibe;
+  const on=(which==="beep")?qrBeep:qrVibe; const b=document.getElementById("tg_"+which);
+  if(b){ b.style.background=on?"#fbbf24":"#334155"; b.style.color=on?"#1e293b":"#fff"; }
+}
+function qrBeepPlay(){
+  try{ if(!qrAudio) qrAudio=new (window.AudioContext||window.webkitAudioContext)(); if(qrAudio.state==="suspended") qrAudio.resume();
+    const o=qrAudio.createOscillator(), g=qrAudio.createGain(); o.frequency.value=880; o.connect(g); g.connect(qrAudio.destination); g.gain.value=0.2; o.start(); setTimeout(()=>{try{o.stop();}catch(e){}},120); }catch(e){}
+}
+function qrScan(){
+  qrSession=[]; qrLast=""; qrLastT=0;
+  const ov=document.createElement("div"); ov.id="qrOverlay";
+  ov.style.cssText="position:fixed;inset:0;background:#000;z-index:9999;display:flex;flex-direction:column";
+  ov.innerHTML=`<div style="color:#fff;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b style="flex:1;min-width:130px">${lang==="ja"?"看板のQRに向けてください":"Point camera at QR"}</b>
+      <button id="tg_beep" onclick="qrToggle('beep')" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:14px">🔊 ${lang==="ja"?"音":"Beep"}</button>
+      <button id="tg_vibe" onclick="qrToggle('vibe')" style="background:#334155;color:#fff;border:none;border-radius:8px;padding:8px 12px;font-size:14px">📳 ${lang==="ja"?"振動":"Vibe"}</button>
+      <button onclick="closeQr()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:15px;font-weight:bold">${lang==="ja"?"完了":"Done"}</button>
+    </div>
+    <div id="qr-reader" style="width:100%;max-width:480px;margin:0 auto;height:42vh;background:#000"></div>
+    <div style="padding:8px 14px"><button onclick="snapShot()" style="width:100%;background:#fbbf24;color:#1e293b;border:none;border-radius:14px;padding:16px;font-size:18px;font-weight:bold">📸 ${lang==="ja"?"写真で読み取る（確実）":"Capture to read"}</button></div>
+    <div id="qrBig" style="color:#fff;text-align:center;font-size:22px;font-weight:bold;padding:6px;min-height:30px"></div>
+    <div id="qrCount" style="color:#cbd5e1;text-align:center;font-size:13px">${lang==="ja"?"読み取り 0 件":"0 scanned"}</div>
+    <div id="qrList" style="flex:1;overflow:auto;padding:8px 14px"></div>
+    <div id="qrMsg" style="color:#fca5a5;text-align:center;padding:8px;font-size:13px"></div>`;
+  document.body.appendChild(ov);
+  startScan();
+}
+async function startScan(){
+  try{
+    qrStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
+  }catch(e){
+    const m=document.getElementById("qrMsg"); if(m) m.textContent=(lang==="ja"?"カメラを開けませんでした。「許可」が必要です。":"Cannot open camera. Allow permission."); return;
+  }
+  const holder=document.getElementById("qr-reader"); if(holder) holder.innerHTML="";
+  qrVideo=document.createElement("video"); qrVideo.setAttribute("playsinline",""); qrVideo.muted=true; qrVideo.autoplay=true;
+  qrVideo.style.cssText="width:100%;height:100%;object-fit:cover";
+  if(holder) holder.appendChild(qrVideo); qrVideo.srcObject=qrStream; try{ await qrVideo.play(); }catch(e){}
+  if("BarcodeDetector" in window){ try{ let fmts=[]; try{ fmts=await window.BarcodeDetector.getSupportedFormats(); }catch(e){} if(!fmts.length || fmts.indexOf("qr_code")>=0){ qrDetector=new window.BarcodeDetector({formats:["qr_code"]}); } }catch(e){} }
+  qrLoop=setInterval(nativeScanTick,250);
+}
+async function nativeScanTick(){
+  if(!qrVideo||qrVideo.readyState<2) return;
+  const vw=qrVideo.videoWidth, vh=qrVideo.videoHeight; if(!vw||!vh) return;
+  if(qrDetector){ try{ const codes=await qrDetector.detect(qrVideo); if(codes&&codes.length){ onQrScan(codes[0].rawValue); return; } }catch(e){} }
+  else if(typeof jsQR!=="undefined"){ const w=Math.min(vw,640), hh=Math.round(w*vh/vw); const found=await decodeFrame(qrVideo,w,hh,0,0,vw,vh); if(found){ onQrScan(found); return; } }
+}
+async function decodeFrame(video,outW,outH,sx,sy,sw,sh){
+  try{
+    const cv=document.createElement("canvas"); cv.width=outW; cv.height=outH;
+    const cx=cv.getContext("2d",{willReadFrequently:true}); cx.drawImage(video,sx,sy,sw,sh,0,0,outW,outH);
+    if(qrDetector){ try{ const codes=await qrDetector.detect(cv); if(codes&&codes.length) return codes[0].rawValue; }catch(e){} }
+    if(typeof jsQR!=="undefined"){ try{ const img=cx.getImageData(0,0,outW,outH); const r=jsQR(img.data,outW,outH,{inversionAttempts:"attemptBoth"}); if(r&&r.data) return r.data; }catch(e){} }
+  }catch(e){}
+  return null;
+}
+async function snapShot(){
+  if(!qrVideo||qrVideo.readyState<2){ flashMsg(lang==="ja"?"カメラ準備中です":"Camera not ready"); return; }
+  const vw=qrVideo.videoWidth, vh=qrVideo.videoHeight; if(!vw||!vh){ flashMsg(lang==="ja"?"カメラ準備中です":"Camera not ready"); return; }
+  let found=await decodeFrame(qrVideo,vw,vh,0,0,vw,vh);
+  if(!found){ const cw=Math.floor(vw*0.6),ch=Math.floor(vh*0.6),cx=Math.floor((vw-cw)/2),cy=Math.floor((vh-ch)/2); found=await decodeFrame(qrVideo,cw*2,ch*2,cx,cy,cw,ch); }
+  if(found){ onQrScan(found); }
+  else { flashMsg(lang==="ja"?"読めませんでした。QRを大きく・はっきり写してもう一度":"Not read. Fill frame with QR and retry"); if(qrVibe&&navigator.vibrate) try{navigator.vibrate([60,40,60]);}catch(e){} }
+}
+function flashMsg(s){ const big=document.getElementById("qrBig"); if(big){ big.textContent=s; big.style.color="#fca5a5"; setTimeout(()=>{ if(big&&big.textContent===s){ big.style.color="#fff"; big.textContent=""; } },1600); } }
+function nativeScanTick_legacy(){}
+function cleanupNative(){
+  if(qrLoop){ clearInterval(qrLoop); qrLoop=null; }
+  if(qrStream){ try{ qrStream.getTracks().forEach(tr=>tr.stop()); }catch(e){} qrStream=null; }
+  qrVideo=null; qrDetector=null;
+}
+function onQrScan(text){
+  const code=String(text||"").trim(); if(!code) return;
+  const now=Date.now();
+  if(code===qrLast && now-qrLastT<2000) return;
+  qrLast=code; qrLastT=now;
+  regCourses.push({code:code,pl:1}); qrSession.push(code);
+  if(typeof drawCourses==="function") drawCourses();
+  if(qrBeep) qrBeepPlay();
+  if(qrVibe && navigator.vibrate) try{navigator.vibrate(120);}catch(e){}
+  const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"読み取り：":"Scanned: ")+code; big.style.color="#4ade80"; setTimeout(()=>{ if(big) big.style.color="#fff"; },500); }
+  const cnt=document.getElementById("qrCount"); if(cnt) cnt.textContent=(lang==="ja"?`読み取り ${qrSession.length} 件`:`${qrSession.length} scanned`);
+  const list=document.getElementById("qrList"); if(list) list.innerHTML=qrSession.slice().reverse().map(c=>`<div style="background:#1e293b;color:#fff;border-radius:8px;padding:8px 12px;margin-bottom:6px;font-weight:bold">✓ ${esc(c)} <span style="color:#94a3b8;font-weight:normal;font-size:13px">1 PL</span></div>`).join("");
+}
+function closeQr(){
+  cleanupNative();
+  if(qrScanner){ try{ qrScanner.stop().then(()=>{try{qrScanner.clear();}catch(e){} qrScanner=null;}).catch(()=>{qrScanner=null;}); }catch(e){ qrScanner=null; } }
+  const ov=document.getElementById("qrOverlay"); if(ov) ov.remove();
+  if(typeof drawCourses==="function") drawCourses();
+}
+function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); }
+function addCourseG(key){ const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return; const c=ci.value.trim(); if(!c) return; const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses(); }
+function courseRow(c,i){
+  return `<div style="flex:0 0 calc(50% - 4px);min-width:0;box-sizing:border-box;display:flex;align-items:center;gap:6px;background:#f8fafc;border-radius:10px;padding:7px 10px"><b style="word-break:break-all;font-size:14px">${esc(c.code)}</b>${c.mixed?`<span style="background:#ede9fe;color:#6d28d9;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:bold;white-space:nowrap">${lang==="ja"?"混載":"mix"}</span>`:""}<span style="color:#64748b;font-size:13px;white-space:nowrap">${c.pl} PL</span><button onclick="regCourses.splice(${i},1);drawCourses()" style="margin-left:auto;background:none;border:none;color:#f87171;font-size:18px;line-height:1">×</button></div>`;
+}
+function drawCourseSel(key){
+  const el=document.getElementById("csel_"+key); if(!el) return;
+  let html=""; regCourses.forEach((c,i)=>{ if(c.grp===key) html+=courseRow(c,i); });
+  el.innerHTML = html? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${html}</div>` : "";
+}
+function drawCourses(){
+  drawCourseSel("course_dc3"); drawCourseSel("course_dc1");
+  const el=document.getElementById("courseList");
+  if(el){
+    let html=""; regCourses.forEach((c,i)=>{ if(c.grp!=="course_dc3"&&c.grp!=="course_dc1") html+=courseRow(c,i); });
+    if(html) html=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${html}</div>`;
+    if(regCourses.length) html+=`<div style="text-align:right;font-weight:bold;color:#475569;margin-top:8px">${t().totalPl(regCourses.reduce((s,c)=>s+c.pl,0))}</div>`;
+    el.innerHTML=html;
+  }
+  if(typeof updateAnom==="function") updateAnom();
+}
+function anomList(){
+  const a=[];
+  if(regPhotos.length===0)a.push(lang==="ja"?"写真がありません":"No photo");
+  if(!document.getElementById("truck").value.trim())a.push(lang==="ja"?"車番が未入力です":"Truck missing");
+  if(!document.getElementById("dest").value.trim())a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
+  if(!document.getElementById("pallets").value.trim())a.push(lang==="ja"?"パレット数が未入力です":"Pallets missing");
+  if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
+  return a;
+}
+function updateAnom(){
+  const a=anomList(), el=document.getElementById("anom"); if(!el)return;
+  el.innerHTML = a.length? `<div class="panel" style="background:#fef2f2;border:2px solid #fecaca;color:#b91c1c;margin-top:14px"><b>⚠ ${t().check}</b><ul style="margin:6px 0 0;padding-left:20px">${a.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+  const b=document.getElementById("saveBtn"); if(b) b.style.background=a.length?"#f97316":"#2563eb";
+}
+async function saveRecord(){
+  const a=anomList();
+  if(a.length && !confirm((lang==="ja"?"不足があります：\n\n":"Missing:\n\n")+a.join("\n")+(lang==="ja"?"\n\nこのまま登録しますか？":"\n\nSave anyway?"))) return;
+  const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
+  const dest=document.getElementById("dest").value.trim(), truck=document.getElementById("truck").value.trim();
+  const pallets=parseInt(document.getElementById("pallets").value)||0, comment=document.getElementById("comment").value.trim();
+  const wname=(user.email||"").split("@")[0]||t().you;
+  try{
+    const ins=await sb.from("load_records").insert({
+      worker_name:wname, worker_id:user.id, destination:dest, truck:truck, pallets:pallets, comment:comment,
+      photo_taken_at:new Date().toISOString(), device_info:navigator.userAgent.slice(0,120)
+    }).select().single();
+    if(ins.error) throw ins.error;
+    const rec=ins.data;
+    // 写真アップロード
+    for(let i=0;i<regPhotos.length;i++){
+      const f=regPhotos[i]; const path=`records/${rec.id}/${Date.now()}_${i}.jpg`;
+      const up=await sb.storage.from("photos").upload(path,f,{contentType:f.type||"image/jpeg"});
+      if(!up.error){ await sb.from("photos").insert({record_id:rec.id,storage_path:path,kind:"load",taken_at:new Date().toISOString()}); }
+    }
+    if(regCourses.length) await sb.from("courses").insert(regCourses.map(c=>({record_id:rec.id,code:c.code,pl:c.pl,checked:false})));
+    if(a.length) await sb.from("anomaly_logs").insert(a.map(m=>({record_id:rec.id,type:"input",message:m})));
+    await sb.from("notifications").insert({record_id:rec.id,message:`${dest||"-"} / ${truck||"-"} 登録`});
+    toast(t().saved);
+    await loadRecords();
+    go("detail",{id:rec.id});
+  }catch(e){ alert((lang==="ja"?"登録できませんでした：":"Save failed: ")+(e.message||e)); btn.disabled=false; btn.textContent=t().save; }
+}
+
+/* ---------- 詳細 ---------- */
+async function renderDetail(id){
+  const r=records.find(x=>String(x.id)===String(id));
+  if(!r){ go(role==="worker"?"list":"search"); return; }
+  const courses=(r.courses||[]).slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
+  const allChecked = courses.length===0 || courses.every(c=>c.checked);
+  let photosHtml=""; window._photoUrls=[];
+  if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
+  else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
+  if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
+  const info=[[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,r.worker_name],
+    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
+  let courseBox="";
+  if(courses.length){
+    courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
+      ${r.dest_confirmed?"":`<p class="hint">${t().tapCheck}</p>`}
+      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${r.dest_confirmed?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px">
+        <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
+  }
+  let actions="";
+  if(!r.completed) actions+=`<button class="btn green" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
+  if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
+    <button class="btn teal" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
+  let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
+  app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
+    <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">${photosHtml}</div>
+    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}</div>
+    ${courseBox}${actions}${adminRow}
+  </div>`;
+}
+async function markComplete(id){ await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"積込完了にしました":"Marked loaded"); await loadRecords(); renderDetail(id); }
+async function toggleCourse(cid,rid,cur){ await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
+async function confirmDest(id,allChecked){ if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
+async function delRecord(id){ if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
+
+/* ---------- ダッシュボード ---------- */
+function renderDashboard(){
+  const todays=records.filter(r=>isToday(r.created_at));
+  const pending=todays.filter(r=>!r.completed).length;
+  const notRecv=todays.filter(r=>r.completed&&!r.dest_confirmed).length;
+  const byW={}; todays.forEach(r=>{const w=r.worker_name||"-";byW[w]=(byW[w]||0)+1;});
+  const maxW=Math.max(1,...Object.values(byW),1);
+  app.innerHTML=topbar()+header(t().dashTitle)+`<div class="pad">
+    <div class="grid2">
+      <div class="stat"><div class="hint">${t().sToday}</div><div class="n" style="color:#2563eb">${todays.length}</div></div>
+      <div class="stat"><div class="hint">${t().sPending}</div><div class="n" style="color:#d97706">${pending}</div></div>
+      <div class="stat"><div class="hint">${t().sRecv}</div><div class="n" style="color:#0d9488">${notRecv}</div></div>
+      <div class="stat"><div class="hint">${t().sWorkers}</div><div class="n" style="color:#059669">${Object.keys(byW).length}</div></div>
+    </div>
+    <div class="panel" style="margin-top:12px"><b>${t().byWorker}</b>
+      ${Object.entries(byW).map(([w,n])=>`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><div style="width:64px;font-size:14px;color:#475569">${esc(w)}</div><div style="flex:1;background:#f1f5f9;border-radius:999px"><div class="bar" style="width:${Math.round(n/maxW*100)}%">${n}</div></div></div>`).join("")||`<p class="hint">${t().mEmpty}</p>`}
+    </div>
+  </div>`+tabbar();
+}
+
+/* ---------- 検索 ---------- */
+let sf={day:"",dest:"",truck:""};
+function renderSearch(){
+  const days=[...new Set(records.map(r=>dayLabel(r.created_at)))];
+  const pick=(label,key,arr)=>`<div style="margin-bottom:8px"><div style="font-weight:bold;font-size:14px;color:#475569;margin-bottom:4px">${label}</div>
+    <button class="chip ${!sf[key]?"on":""}" onclick="sf['${key}']='';renderSearch()">${t().all}</button>
+    ${arr.map(v=>`<button class="chip ${sf[key]===v?"on":""}" onclick="sf['${key}']=${JSON.stringify(v).replace(/"/g,'&quot;')};renderSearch()">${esc(v)}</button>`).join("")}</div>`;
+  const res=records.filter(r=>(!sf.day||dayLabel(r.created_at)===sf.day)&&(!sf.dest||r.destination===sf.dest)&&(!sf.truck||r.truck===sf.truck));
+  app.innerHTML=topbar()+header(t().searchTitle)+`<div class="pad" id="sv">
+    ${pick(t().fDate,"day",days)}${pick(t().fDest,"dest",suggest("dest"))}${pick(t().fTruck,"truck",suggest("truck"))}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">
+      <b>${t().results(res.length)}</b><button class="btn green small" onclick="exportCsv()">⬇ ${t().csv}</button></div>
+    <div id="sres">${t().loading}</div>
+  </div>`+tabbar();
+  listHtml(res).then(h=>{const e=document.getElementById("sres"); if(e)e.innerHTML=h;});
+  window._searchRes=res;
+}
+function exportCsv(){
+  const res=window._searchRes||[];
+  const head=["日時/Date","車番/Truck","納品先/Destination","担当者/Worker","パレット数/Pallets","積込完了/Loaded","納品先完了/Received"];
+  const rows=res.map(r=>[dayLabel(r.created_at)+" "+hhmm(r.created_at),r.truck||"",r.destination||"",r.worker_name||"",r.pallets||0,r.completed_at?hhmm(r.completed_at):"",r.dest_confirmed_at?hhmm(r.dest_confirmed_at):""]);
+  const body=[head,...rows].map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob=new Blob(["\uFEFF"+body],{type:"text/csv"}); const u=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=u; a.download="積込実績.csv"; a.click(); toast(t().csvDone);
+}
+
+/* ---------- 履歴 ---------- */
+let hf={mode:"truck",picked:null};
+function renderHistory(){
+  const list=hf.mode==="truck"?suggest("truck"):suggest("dest");
+  let inner;
+  if(!hf.picked){
+    inner=`<div class="hint" style="margin-bottom:6px">${t().choose}</div>`+list.map(v=>`<button class="card" style="display:block;font-weight:bold" onclick="hf.picked=${JSON.stringify(v).replace(/"/g,'&quot;')};renderHistory()">${esc(v)}</button>`).join("");
+  } else {
+    const res=records.filter(r=>(hf.mode==="truck"?r.truck:r.destination)===hf.picked);
+    inner=`<button class="chip" onclick="hf.picked=null;renderHistory()">‹ ${t().back}</button><div style="font-weight:bold;font-size:18px;margin:8px 0">${esc(hf.picked)}</div><div class="hint">${t().loadings(res.length)}</div><div id="hres">${t().loading}</div>`;
+    listHtml(res).then(h=>{const e=document.getElementById("hres");if(e)e.innerHTML=h;});
+  }
+  app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn small" style="flex:1;${hf.mode==="truck"?"":"background:#f1f5f9;color:#475569"}" onclick="hf.mode='truck';hf.picked=null;renderHistory()">🚚 ${t().byTruck}</button>
+      <button class="btn small" style="flex:1;${hf.mode==="dest"?"":"background:#f1f5f9;color:#475569"}" onclick="hf.mode='dest';hf.picked=null;renderHistory()">📦 ${t().byDest}</button>
+    </div>${inner}</div>`+tabbar();
+}
+
+/* ---------- マスタ ---------- */
+let mf={mode:"dest"};
+function masterModeLabel(m){
+  if(m==="dest") return t().mDest;
+  if(m==="truck") return t().mTruck;
+  if(m==="course_dc3") return (lang==="ja"?"DC3行き コース記号":"DC3 course code");
+  return (lang==="ja"?"DC1行き コース記号":"DC1 course code");
+}
+function renderMaster(){
+  const list=getMaster(mf.mode);
+  const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
+  const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1")?t().mCourseNote:t().mNote;
+  app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${tabBtn("course_dc3","DC3 "+t().candTitle3)}${tabBtn("course_dc1","DC1 "+t().candTitle1)}
+    </div>
+    <div style="display:flex;gap:8px">
+      <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
+      <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
+    </div>
+    <p class="hint">${note}</p>
+    <div>${list.length?list.map((v,i)=>`<div class="card" style="align-items:center"><div style="flex:1;font-weight:500">${esc(v)}</div>
+      <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button></div>`).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
+  </div>`+tabbar();
+}
+function masterAdd(){ const v=document.getElementById("mNew").value.trim(); if(!v)return; const a=getMaster(mf.mode); if(!a.includes(v)){a.push(v);setMaster(mf.mode,a);} renderMaster(); }
+function masterEdit(i){ const a=getMaster(mf.mode); const v=prompt(t().mSave,a[i]); if(v&&v.trim()){a[i]=v.trim();setMaster(mf.mode,a);renderMaster();} }
+function masterDel(i){ if(!confirm(t().mDelQ))return; const a=getMaster(mf.mode); a.splice(i,1); setMaster(mf.mode,a); renderMaster(); }
+
+/* ---------- 設定 ---------- */
+function renderSettings(){
+  app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
+    <div class="panel"><b>🌐 ${t().language}</b>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn small" style="flex:1;${lang==="ja"?"":"background:#f1f5f9;color:#475569"}" onclick="setLang('ja')">日本語</button>
+        <button class="btn small" style="flex:1;${lang==="en"?"":"background:#f1f5f9;color:#475569"}" onclick="setLang('en')">English</button>
+      </div></div>
+    <button class="btn ghost" onclick="logout()">${t().logout}</button>
+  </div>`+tabbar();
+}
+function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
+
+/* グローバル公開（onclick用） */
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,renderSearch,renderHistory,renderMaster});
+window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
+
+start();
+</script>
+</body>
+</html>
