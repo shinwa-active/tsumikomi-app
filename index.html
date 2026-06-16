@@ -751,9 +751,9 @@ function renderMaster(){
       const swatches=isCourse?`<div style="display:flex;gap:6px;margin-top:8px">`+MCOLORS.map(c=>`<button onclick="masterColor(${i},'${c.key}')" title="${c.label}" style="width:30px;height:30px;border-radius:8px;background:${c.bg};border:2px solid ${col===c.key?"#0f172a":c.bd};${c.key===""?"position:relative":""}">${c.key===""?'<span style=\"font-size:11px;color:#94a3b8\">なし</span>':(col===c.key?'<span style=\"color:#0f172a\">✓</span>':"")}</button>`).join("")+`</div>`:"";
       return `<div class="card" style="display:block">
         <div style="display:flex;align-items:center;gap:6px">
-          <div style="display:flex;flex-direction:column;gap:2px">
-            <button class="chip" style="padding:2px 8px;${i===0?"opacity:.3":""}" onclick="masterMove(${i},-1)" ${i===0?"disabled":""}>▲</button>
-            <button class="chip" style="padding:2px 8px;${i===list.length-1?"opacity:.3":""}" onclick="masterMove(${i},1)" ${i===list.length-1?"disabled":""}>▼</button>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button onclick="masterMove(${i},-1)" ${i===0?"disabled":""} style="width:44px;height:38px;border-radius:10px;border:1px solid #cbd5e1;background:${i===0?"#f8fafc":"#eef2ff"};color:${i===0?"#cbd5e1":"#3730a3"};font-size:18px;font-weight:bold">▲</button>
+            <button onclick="masterMove(${i},1)" ${i===list.length-1?"disabled":""} style="width:44px;height:38px;border-radius:10px;border:1px solid #cbd5e1;background:${i===list.length-1?"#f8fafc":"#eef2ff"};color:${i===list.length-1?"#cbd5e1":"#3730a3"};font-size:18px;font-weight:bold">▼</button>
           </div>
           <div style="flex:1;font-weight:600;font-size:16px;padding:6px 10px;border-radius:8px;background:${isCourse?colorBg(col):"transparent"};border:${isCourse&&col?"2px solid "+colorBd(col):"none"}">${esc(v)}</div>
           <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button>
