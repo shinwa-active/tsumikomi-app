@@ -69,17 +69,17 @@ const T = {
  ja:{worker:"作業者",manager:"管理者",worksOffline:"オフライン対応",logout:"ログアウト",
    homeTitle:"横持ち記録",today:"本日の横持ち",ken:"件",capture:"横持ち開始",viewList:"横持ちした一覧を見る",
    offlineNote:"電波が切れても、つながり次第まとめて送られます。",
-   regTitle:"積込を登録",photos:"写真（1〜3枚）",take:"写真を撮る（積み込み後　荷姿）",
+   regTitle:"横持ちを登録",photos:"写真（1〜3枚）",take:"写真を撮る（積み込み後　荷姿）",
    fDest:"納品先",fTruck:"車番",fPallets:"パレット数",fComment:"コメント（任意）",
-   phDest:"例）尼崎第一倉庫",phTruck:"例）なにわ100あ12-34",phPallets:"例）8",phComment:"気づいたこと",
+   phDest:"",phTruck:"",phPallets:"例）8",phComment:"気づいたこと",
    coursesLabel:"コース看板",qrScan:"QR",qrHint:"候補からTapして選ぶ、候補に無い時は手入力します。",
    phCode:"コード",add:"追加",totalPl:n=>`合計 ${n} PL`,
    check:"確認してください",save:"登録する",saving:"登録中…",saved:"登録しました。全員に共有されます",
    listTitle:"登録一覧",done:"完了",pending:"未完了",reqcheck:"要確認",destShort:"納品先✓",noTruck:"車番なし",noDest:"（納品先なし）",
    by:(w,p)=>`担当 ${w}・${p}パレット`,
-   detailTitle:"積込の詳細",loadedAt:t=>`積込完了 ${t}`,recvAt:t=>`納品先完了 ${t}`,
+   detailTitle:"横持ちの明細",loadedAt:t=>`積込完了 ${t}`,recvAt:t=>`納品先完了 ${t}`,
    iWorker:"担当者",iPhoto:"撮影/登録",iComment:"コメント",none:"（なし）",pl:n=>`${n} パレット`,
-   complete:"積込完了",courseList:"コース看板リスト",tapCheck:"現物を確認したらタップ",
+   complete:"積込完了",courseList:"横持ちコースリスト",tapCheck:"現物を確認したらタップ",
    destSection:"納品先での確認",destBtn:"納品先で確認（完了にする）",destQ:"写真と現物は合っていますか？「納品先完了」にします。",checkAll:"先に全コースにチェックを入れてください",
    edit:"直す",del:"消す",delQ:"この記録を消しますか？（管理者のみ）",
    dashTitle:"ダッシュボード",sToday:"本日の積込",sPending:"未完了",sRecv:"納品先未完了",sWorkers:"担当者数",byWorker:"担当者別（本日）",
@@ -130,14 +130,23 @@ function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;
 function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
 
 /* ---- マスタ（クラウド共有） ---- */
-let masterRows={}; // kind -> [{id,value,sort_order}]
+const MCOLORS=[
+  {key:"",label:"色なし",bg:"#ffffff",bd:"#e2e8f0"},
+  {key:"red",label:"薄い赤（第一優先）",bg:"#fde8e8",bd:"#f1a9a9"},
+  {key:"yellow",label:"薄い黄",bg:"#fdf6e3",bd:"#ecd591"},
+  {key:"blue",label:"薄い青",bg:"#e8f1fd",bd:"#a9c4ee"}
+];
+function colorBg(k){ const c=MCOLORS.find(x=>x.key===(k||"")); return c?c.bg:"#ffffff"; }
+function colorBd(k){ const c=MCOLORS.find(x=>x.key===(k||"")); return c?c.bd:"#e2e8f0"; }
+function colorOf(kind,value){ const row=(masterRows[kind]||[]).find(r=>r.value===value); return row?(row.color||""):""; }
+let masterRows={}; // kind -> [{id,value,sort_order,color}]
 function getMaster(k){ return (masterRows[k]||[]).map(r=>r.value); }
 function setMaster(k,arr){ localStorage.setItem("m_"+k,JSON.stringify(arr)); } // 端末側の保存（引き継ぎ元として保持）
 async function loadMaster(){
   const {data,error}=await sb.from("master_items").select("*").order("sort_order",{ascending:true});
   if(error){ console.error(error); return; }
   const m={};
-  (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order}); });
+  (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order,color:r.color||""}); });
   masterRows=m;
   if(view.name==="master") renderMaster();
   else if(view.name==="register" && document.getElementById("candArea")){ drawCandidates(); }
@@ -429,7 +438,7 @@ function drawCandidates(){
     const fn = inMix?"mixPick":"addCand";
     return `<div style="margin-bottom:8px">${head}${pickBar}
       <div style="max-height:150px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
-      ${arr.map((v,i)=>`<button class="chip" onclick="${fn}('${key}',${i})">${esc(v)}</button>`).join("")}</div>
+      ${arr.map((v,i)=>{const col=colorOf(key,v);return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;}).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
         <input id="cPl_${key}" inputmode="numeric" placeholder="PL" style="width:56px;text-align:center">
@@ -626,8 +635,8 @@ async function renderDetail(id){
   let courseBox="";
   if(courses.length){
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
-      ${r.dest_confirmed?"":`<p class="hint">${t().tapCheck}</p>`}
-      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${r.dest_confirmed?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px">
+      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
+      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed)?"opacity:.5":""}">
         <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
   }
   let actions="";
@@ -729,15 +738,29 @@ function renderMaster(){
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("course_dc3","DC3 "+t().candTitle3)}${tabBtn("course_dc1","DC1 "+t().candTitle1)}
+      ${tabBtn("course_dc3",t().candTitle3)}${tabBtn("course_dc1",t().candTitle1)}
     </div>
     <div style="display:flex;gap:8px">
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
       <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
     </div>
     <p class="hint">${note}</p>
-    <div>${list.length?list.map((v,i)=>`<div class="card" style="align-items:center"><div style="flex:1;font-weight:500">${esc(v)}</div>
-      <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button></div>`).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
+    <div>${list.length?list.map((v,i)=>{
+      const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1");
+      const col=isCourse?colorOf(mf.mode,v):"";
+      const swatches=isCourse?`<div style="display:flex;gap:6px;margin-top:8px">`+MCOLORS.map(c=>`<button onclick="masterColor(${i},'${c.key}')" title="${c.label}" style="width:30px;height:30px;border-radius:8px;background:${c.bg};border:2px solid ${col===c.key?"#0f172a":c.bd};${c.key===""?"position:relative":""}">${c.key===""?'<span style=\"font-size:11px;color:#94a3b8\">なし</span>':(col===c.key?'<span style=\"color:#0f172a\">✓</span>':"")}</button>`).join("")+`</div>`:"";
+      return `<div class="card" style="display:block">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <button class="chip" style="padding:2px 8px;${i===0?"opacity:.3":""}" onclick="masterMove(${i},-1)" ${i===0?"disabled":""}>▲</button>
+            <button class="chip" style="padding:2px 8px;${i===list.length-1?"opacity:.3":""}" onclick="masterMove(${i},1)" ${i===list.length-1?"disabled":""}>▼</button>
+          </div>
+          <div style="flex:1;font-weight:600;font-size:16px;padding:6px 10px;border-radius:8px;background:${isCourse?colorBg(col):"transparent"};border:${isCourse&&col?"2px solid "+colorBd(col):"none"}">${esc(v)}</div>
+          <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button>
+        </div>
+        ${swatches}
+      </div>`;
+    }).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
     <div style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:14px">
       <p class="hint">${lang==="ja"?"このマスタは全員で共有されます（編集できるのは管理者だけ）。下のボタンは、この端末に残っている古いマスタを、クラウドに引き継ぐとき一度だけ押します。":"Shared with everyone. Use the button once to upload this device's old master to the cloud."}</p>
       <button class="btn ghost small" onclick="masterUpload()">⬆ ${lang==="ja"?"この端末のマスタをクラウドに引き継ぐ":"Upload this device's master"}</button>
@@ -746,9 +769,23 @@ function renderMaster(){
 }
 async function masterAdd(){ const el=document.getElementById("mNew"); const v=el.value.trim(); if(!v)return; if(getMaster(mf.mode).includes(v)){ el.value=""; return; }
   const so=(masterRows[mf.mode]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0)+1;
-  const {data,error}=await sb.from("master_items").insert({kind:mf.mode,value:v,sort_order:so}).select();
+  const {data,error}=await sb.from("master_items").insert({kind:mf.mode,value:v,sort_order:so,color:""}).select();
   if(error||!data){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
-  (masterRows[mf.mode]=masterRows[mf.mode]||[]).push({id:data[0].id,value:v,sort_order:so}); el.value=""; renderMaster();
+  (masterRows[mf.mode]=masterRows[mf.mode]||[]).push({id:data[0].id,value:v,sort_order:so,color:""}); el.value=""; renderMaster();
+}
+async function masterMove(i,dir){
+  const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
+  const a=arr[i], b=arr[j], sa=a.sort_order, sb=b.sort_order;
+  const {error:e1}=await sb.from("master_items").update({sort_order:sb}).eq("id",a.id);
+  const {error:e2}=await sb.from("master_items").update({sort_order:sa}).eq("id",b.id);
+  if(e1||e2){ toast(lang==="ja"?"並べ替えに失敗しました":"Reorder failed"); return; }
+  a.sort_order=sb; b.sort_order=sa; arr[i]=b; arr[j]=a; renderMaster();
+}
+async function masterColor(i,key){
+  const row=(masterRows[mf.mode]||[])[i]; if(!row) return;
+  const {error}=await sb.from("master_items").update({color:key}).eq("id",row.id);
+  if(error){ toast(lang==="ja"?"色の保存に失敗しました":"Color save failed"); return; }
+  row.color=key; renderMaster();
 }
 async function masterEdit(i){ const row=(masterRows[mf.mode]||[])[i]; if(!row) return; const v=prompt(t().mSave,row.value); if(!v||!v.trim()) return;
   const {error}=await sb.from("master_items").update({value:v.trim()}).eq("id",row.id);
@@ -789,7 +826,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterUpload,renderSearch,renderHistory,renderMaster});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterUpload,renderSearch,renderHistory,renderMaster});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
