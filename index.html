@@ -776,11 +776,11 @@ async function masterAdd(){ const el=document.getElementById("mNew"); const v=el
 async function masterMove(i,dir){
   const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
   const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
-  arr.forEach((r,idx)=>{ r.sort_order=idx; });
+  const changed=[];
+  arr.forEach((r,idx)=>{ if(r.sort_order!==idx){ r.sort_order=idx; changed.push(r); } });
   renderMaster();
-  const payload=arr.map(r=>({id:r.id,kind:mf.mode,value:r.value,sort_order:r.sort_order,color:r.color||""}));
-  const {error}=await sb.from("master_items").upsert(payload);
-  if(error){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
+  const results=await Promise.all(changed.map(r=>sb.from("master_items").update({sort_order:r.sort_order}).eq("id",r.id)));
+  if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
 }
 async function masterColor(i,key){
   const row=(masterRows[mf.mode]||[])[i]; if(!row) return;
