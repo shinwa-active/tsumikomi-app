@@ -129,9 +129,19 @@ function t(){ return T[lang]; }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
 
-/* ---- マスタ（この端末に保存） ---- */
-function getMaster(k){ try{return JSON.parse(localStorage.getItem("m_"+k)||"[]");}catch(e){return [];} }
-function setMaster(k,arr){ localStorage.setItem("m_"+k,JSON.stringify(arr)); }
+/* ---- マスタ（クラウド共有） ---- */
+let masterRows={}; // kind -> [{id,value,sort_order}]
+function getMaster(k){ return (masterRows[k]||[]).map(r=>r.value); }
+function setMaster(k,arr){ localStorage.setItem("m_"+k,JSON.stringify(arr)); } // 端末側の保存（引き継ぎ元として保持）
+async function loadMaster(){
+  const {data,error}=await sb.from("master_items").select("*").order("sort_order",{ascending:true});
+  if(error){ console.error(error); return; }
+  const m={};
+  (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order}); });
+  masterRows=m;
+  if(view.name==="master") renderMaster();
+  else if(view.name==="register" && document.getElementById("candArea")){ drawCandidates(); }
+}
 const COURSE_DC3_DEFAULT=["AH","AG","7P","7Q","7R","AA","2P","2N","BA","BB","BF","9A","9B","9C","9F","4P","4T","4E","4F","4R","5D","3P","3サ","3シ","3X","3C","3D","0A","0B","0C","0D","0G","1E","1B","1C"];
 const COURSE_DC1_DEFAULT=["4＋","4＆","3％","3－","3！","3＃","3＆","3＊","3：","3＋","3＄","4－","4＊","4／","4：","4％","4＞","4”","4！","4＃","4＄","PKD","PQD","PKT","AU0","QQY","セケ1","PQT","LD","チ＠","ナ＠","L","ト＠","ツ＠","ノS","ア＠","イ＠","ウ＠","エ＠","オ＠","カ＠","キ＠","ク＠","ケ＠","コ＠","サ＠","シ＠","ス＠","セ＠","ソ＠","タ＠","テ＠","ヌ＠","ネ＠","ノ＠","ハ＠","フ＠","ヒ＠","ヘ＠","マ＠","ラ＠","ホ＠","J＠","5E","5Q","5R","6B","6S","6T","8A","LK","2L","5F","5G","ウ＃","0V"];
 function ensureCourseDefaults(){
@@ -268,10 +278,12 @@ async function afterLogin(){
   await loadRecords();
   await loadYoko();
   await loadPal();
+  await loadMaster();
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"load_records"},loadRecords)
     .on("postgres_changes",{event:"*",schema:"public",table:"courses"},loadRecords)
     .on("postgres_changes",{event:"*",schema:"public",table:"yokomochi_status"},loadYoko)
-    .on("postgres_changes",{event:"*",schema:"public",table:"pallet_remain"},loadPal).subscribe();
+    .on("postgres_changes",{event:"*",schema:"public",table:"pallet_remain"},loadPal)
+    .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster).subscribe();
 }
 async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; renderLogin(); }
 
@@ -726,11 +738,42 @@ function renderMaster(){
     <p class="hint">${note}</p>
     <div>${list.length?list.map((v,i)=>`<div class="card" style="align-items:center"><div style="flex:1;font-weight:500">${esc(v)}</div>
       <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button></div>`).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
+    <div style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:14px">
+      <p class="hint">${lang==="ja"?"このマスタは全員で共有されます（編集できるのは管理者だけ）。下のボタンは、この端末に残っている古いマスタを、クラウドに引き継ぐとき一度だけ押します。":"Shared with everyone. Use the button once to upload this device's old master to the cloud."}</p>
+      <button class="btn ghost small" onclick="masterUpload()">⬆ ${lang==="ja"?"この端末のマスタをクラウドに引き継ぐ":"Upload this device's master"}</button>
+    </div>
   </div>`+tabbar();
 }
-function masterAdd(){ const v=document.getElementById("mNew").value.trim(); if(!v)return; const a=getMaster(mf.mode); if(!a.includes(v)){a.push(v);setMaster(mf.mode,a);} renderMaster(); }
-function masterEdit(i){ const a=getMaster(mf.mode); const v=prompt(t().mSave,a[i]); if(v&&v.trim()){a[i]=v.trim();setMaster(mf.mode,a);renderMaster();} }
-function masterDel(i){ if(!confirm(t().mDelQ))return; const a=getMaster(mf.mode); a.splice(i,1); setMaster(mf.mode,a); renderMaster(); }
+async function masterAdd(){ const el=document.getElementById("mNew"); const v=el.value.trim(); if(!v)return; if(getMaster(mf.mode).includes(v)){ el.value=""; return; }
+  const so=(masterRows[mf.mode]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0)+1;
+  const {data,error}=await sb.from("master_items").insert({kind:mf.mode,value:v,sort_order:so}).select();
+  if(error||!data){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  (masterRows[mf.mode]=masterRows[mf.mode]||[]).push({id:data[0].id,value:v,sort_order:so}); el.value=""; renderMaster();
+}
+async function masterEdit(i){ const row=(masterRows[mf.mode]||[])[i]; if(!row) return; const v=prompt(t().mSave,row.value); if(!v||!v.trim()) return;
+  const {error}=await sb.from("master_items").update({value:v.trim()}).eq("id",row.id);
+  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  row.value=v.trim(); renderMaster();
+}
+async function masterDel(i){ if(!confirm(t().mDelQ))return; const row=(masterRows[mf.mode]||[])[i]; if(!row) return;
+  const {error}=await sb.from("master_items").delete().eq("id",row.id);
+  if(error){ toast(lang==="ja"?"削除に失敗しました":"Delete failed"); return; }
+  masterRows[mf.mode].splice(i,1); renderMaster();
+}
+async function masterUpload(){
+  if(!confirm(lang==="ja"?"この端末のマスタ（車番・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
+  const kinds=["truck","dest","course_dc1","course_dc3"]; let added=0;
+  for(const k of kinds){
+    let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+k)||"[]"); }catch(e){}
+    const existing=new Set(getMaster(k));
+    let so=(masterRows[k]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0);
+    const rows=[];
+    local.forEach(v=>{ if(v && !existing.has(v)){ so++; rows.push({kind:k,value:v,sort_order:so}); existing.add(v); } });
+    if(rows.length){ const {error}=await sb.from("master_items").insert(rows); if(!error) added+=rows.length; }
+  }
+  await loadMaster();
+  toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
+}
 
 /* ---------- 設定 ---------- */
 function renderSettings(){
@@ -746,7 +789,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,renderSearch,renderHistory,renderMaster});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterUpload,renderSearch,renderHistory,renderMaster});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
