@@ -752,8 +752,8 @@ function renderMaster(){
       return `<div class="card" style="display:block">
         <div style="display:flex;align-items:center;gap:6px">
           <div style="display:flex;flex-direction:column;gap:6px">
-            <button onclick="masterMove(${i},-1)" ${i===0?"disabled":""} style="width:44px;height:38px;border-radius:10px;border:1px solid #cbd5e1;background:${i===0?"#f8fafc":"#eef2ff"};color:${i===0?"#cbd5e1":"#3730a3"};font-size:18px;font-weight:bold">▲</button>
-            <button onclick="masterMove(${i},1)" ${i===list.length-1?"disabled":""} style="width:44px;height:38px;border-radius:10px;border:1px solid #cbd5e1;background:${i===list.length-1?"#f8fafc":"#eef2ff"};color:${i===list.length-1?"#cbd5e1":"#3730a3"};font-size:18px;font-weight:bold">▼</button>
+            <button class="chip" style="padding:8px 14px;font-size:18px;${i===0?"opacity:.35":""}" onclick="masterMove(${i},-1)">▲</button>
+            <button class="chip" style="padding:8px 14px;font-size:18px;${i===list.length-1?"opacity:.35":""}" onclick="masterMove(${i},1)">▼</button>
           </div>
           <div style="flex:1;font-weight:600;font-size:16px;padding:6px 10px;border-radius:8px;background:${isCourse?colorBg(col):"transparent"};border:${isCourse&&col?"2px solid "+colorBd(col):"none"}">${esc(v)}</div>
           <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button>
@@ -775,11 +775,12 @@ async function masterAdd(){ const el=document.getElementById("mNew"); const v=el
 }
 async function masterMove(i,dir){
   const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
-  const a=arr[i], b=arr[j], sa=a.sort_order, sb=b.sort_order;
-  const {error:e1}=await sb.from("master_items").update({sort_order:sb}).eq("id",a.id);
-  const {error:e2}=await sb.from("master_items").update({sort_order:sa}).eq("id",b.id);
-  if(e1||e2){ toast(lang==="ja"?"並べ替えに失敗しました":"Reorder failed"); return; }
-  a.sort_order=sb; b.sort_order=sa; arr[i]=b; arr[j]=a; renderMaster();
+  const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
+  arr.forEach((r,idx)=>{ r.sort_order=idx; });
+  renderMaster();
+  const payload=arr.map(r=>({id:r.id,kind:mf.mode,value:r.value,sort_order:r.sort_order,color:r.color||""}));
+  const {error}=await sb.from("master_items").upsert(payload);
+  if(error){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
 }
 async function masterColor(i,key){
   const row=(masterRows[mf.mode]||[])[i]; if(!row) return;
