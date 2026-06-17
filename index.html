@@ -70,7 +70,7 @@ const T = {
    homeTitle:"横持ち記録",today:"本日の横持ち",ken:"件",capture:"横持ち開始",viewList:"横持ちした一覧を見る",
    offlineNote:"電波が切れても、つながり次第まとめて送られます。",
    regTitle:"横持ちを登録",photos:"写真（1〜3枚）",take:"写真を撮る（積み込み後　荷姿）",
-   fDest:"納品先",fTruck:"車番",fPallets:"パレット数",fComment:"コメント（任意）",
+   fDest:"納品先",fTruck:"車番",fOki:"積み地",fPallets:"パレット数",fComment:"コメント（任意）",
    phDest:"",phTruck:"",phPallets:"例）8",phComment:"気づいたこと",
    coursesLabel:"コース看板",qrScan:"QR",qrHint:"候補からTapして選ぶ、候補に無い時は手入力します。",
    phCode:"コード",add:"追加",totalPl:n=>`合計 ${n} PL`,
@@ -85,7 +85,7 @@ const T = {
    dashTitle:"ダッシュボード",sToday:"本日の積込",sPending:"未完了",sRecv:"納品先未完了",sWorkers:"担当者数",byWorker:"担当者別（本日）",
    searchTitle:"検索",fDate:"日付",all:"すべて",results:n=>`${n} 件`,csv:"CSVで出す",csvDone:"CSVを書き出しました",
    histTitle:"履歴",byTruck:"車番別",byDest:"納品先別",choose:"選んでください",back:"選びなおす",loadings:n=>`${n} 件`,
-   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"車番",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・車番が、撮影画面の候補に出ます（この端末に保存）。",
+   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"車番",mOki:"積み地",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・車番が、撮影画面の候補に出ます（この端末に保存）。",mOkiNote:"ここの積み地が、横持ち登録画面の候補に出ます。",
    candTitle3:"DC3行き",candTitle1:"DC1行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
    tHome:"ホーム",tList:"一覧",tDash:"集計",tSearch:"検索",tHist:"履歴",tMaster:"マスタ",settings:"設定",language:"言語",
    loginTitle:"積込証跡管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
@@ -94,7 +94,7 @@ const T = {
    homeTitle:"Loading records",today:"Today",ken:"",capture:"Take photos & save",viewList:"View all records",
    offlineNote:"Even with no signal, records send once you're back online.",
    regTitle:"New record",photos:"Photos (1–3)",take:"Take / choose photo",
-   fDest:"Destination",fTruck:"Truck number",fPallets:"Pallets",fComment:"Comment (optional)",
+   fDest:"Destination",fTruck:"Truck number",fOki:"Loading location",fPallets:"Pallets",fComment:"Comment (optional)",
    phDest:"e.g. Amagasaki WH 1",phTruck:"e.g. Naniwa 100 A 12-34",phPallets:"e.g. 8",phComment:"Anything you noticed",
    coursesLabel:"Course signs",qrScan:"QR",qrHint:"Tap a candidate to add; type manually if missing or mixed.",
    phCode:"Code",add:"Add",totalPl:n=>`Total ${n} PL`,
@@ -109,7 +109,7 @@ const T = {
    dashTitle:"Dashboard",sToday:"Loadings",sPending:"Pending",sRecv:"Not received",sWorkers:"Workers",byWorker:"By worker (today)",
    searchTitle:"Search",fDate:"Date",all:"All",results:n=>`${n} records`,csv:"Export CSV",csvDone:"CSV exported",
    histTitle:"History",byTruck:"By truck",byDest:"By destination",choose:"Choose",back:"Back",loadings:n=>`${n} loadings`,
-   masterTitle:"Master data",mDest:"Destinations",mTruck:"Trucks",mAdd:"Add",mSave:"Save",mDelQ:"Delete?",mEmpty:"None",mNote:"These appear as suggestions when capturing (saved on this device).",
+   masterTitle:"Master data",mDest:"Destinations",mTruck:"Trucks",mOki:"Loading locations",mAdd:"Add",mSave:"Save",mDelQ:"Delete?",mEmpty:"None",mNote:"These appear as suggestions when capturing (saved on this device).",mOkiNote:"These appear as candidates on the new-record screen.",
    candTitle3:"To DC3",candTitle1:"To DC1",mCourseNote:"These course codes appear as candidates when capturing (saved on this device).",
    tHome:"Home",tList:"List",tDash:"Stats",tSearch:"Search",tHist:"History",tMaster:"Master",settings:"Settings",language:"Language",
    loginTitle:"Loading Evidence System",loginSub:"Please log in.",email:"Email",pass:"Password",login:"Log in",loggingIn:"Checking…",loginNg:"Cannot log in: ",
@@ -200,14 +200,32 @@ async function loadYoko(){
 }
 async function toggleYoko(id){
   const row=yoku.find(x=>x.id===id); if(!row) return;
+  let justCompleted=false;
   if(!ydone(row)){
     if(!confirm((lang==="ja"?"完了にします：\n\n":"Mark as done:\n\n")+row.label+(lang==="ja"?"\n\nよろしいですか？":"\n\nOK?"))) return;
     await sb.from("yokomochi_status").update({done:true,done_at:new Date().toISOString(),done_date:todayStr(),updated_at:new Date().toISOString()}).eq("id",id);
+    justCompleted=true;
   } else {
     if(!confirm((lang==="ja"?"完了を取り消します：\n\n":"Undo completion:\n\n")+row.label+(lang==="ja"?"\n\nよろしいですか？":"\n\nOK?"))) return;
     await sb.from("yokomochi_status").update({done:false,done_at:null,done_date:null,updated_at:new Date().toISOString()}).eq("id",id);
   }
   await loadYoko();
+  if(justCompleted) await checkYokoGroupZero(row.label);
+}
+function yokoGroupPrefix(label){
+  if(!label) return null;
+  if(label.indexOf("DC2 5F")===0) return "DC2 5F";
+  if(label.indexOf("DC2 3F")===0) return "DC2 3F";
+  if(label.indexOf("アトム電器")===0) return "アトム電器";
+  return null;
+}
+async function checkYokoGroupZero(label){
+  const prefix=yokoGroupPrefix(label); if(!prefix) return;
+  const group=yoku.filter(r=>yokoGroupPrefix(r.label)===prefix);
+  if(!group.length || !group.every(ydone)) return;
+  const targets=pal.filter(r=>r.label && r.label.indexOf(prefix)===0);
+  for(const tgt of targets){ await sb.from("pallet_remain").update({remain:0,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",tgt.id); }
+  if(targets.length){ await loadPal(); toast(lang==="ja"?prefix+" のパレット残数を0にしました":prefix+" pallets reset to 0"); }
 }
 let pal=[];
 function palBase(r){ return r.updated_date===todayStr() ? (r.remain||0) : 0; }
@@ -391,10 +409,13 @@ async function render(){
 }
 
 /* ---------- 登録 ---------- */
-let regPhotos=[], regCourses=[];
+let regPhotos=[], regCourses=[], regOki="";
 function renderRegister(){
-  regPhotos.length=0; regCourses.length=0; mix=null;
+  regPhotos.length=0; regCourses.length=0; mix=null; regOki="";
   app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
+    <label>${t().fOki}</label>
+    <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+
     <label>${t().fDest}</label><input id="dest" placeholder="${t().phDest}">
     <div id="sgDest"></div>
     <label>${t().fTruck}</label><input id="truck" placeholder="${t().phTruck}">
@@ -418,8 +439,15 @@ function renderRegister(){
   </div>`;
   document.getElementById("file").onchange=onFiles;
   document.getElementById("dest").oninput=document.getElementById("truck").oninput=updateAnom;
-  drawSuggest(); drawCandidates(); drawCourses(); updateAnom();
+  drawOki(); drawSuggest(); drawCandidates(); drawCourses(); updateAnom();
 }
+function drawOki(){
+  const area=document.getElementById("okiArea"); if(!area) return;
+  const arr=getMaster("oki_chi");
+  if(!arr.length){ area.innerHTML=`<p class="hint">${lang==="ja"?"管理者マスタ変更で積み地を登録してください":"Ask admin to add loading locations"}</p>`; return; }
+  area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickOki(${i})" style="${regOki===v?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
+}
+function pickOki(i){ const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; regOki=(regOki===v?"":v); drawOki(); updateAnom(); }
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
@@ -580,6 +608,7 @@ function drawCourses(){
 }
 function anomList(){
   const a=[];
+  if(!regOki)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing");
   if(regPhotos.length===0)a.push(lang==="ja"?"写真がありません":"No photo");
   if(!document.getElementById("truck").value.trim())a.push(lang==="ja"?"車番が未入力です":"Truck missing");
   if(!document.getElementById("dest").value.trim())a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
@@ -597,10 +626,13 @@ async function saveRecord(){
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
   const dest=document.getElementById("dest").value.trim(), truck=document.getElementById("truck").value.trim();
   const pallets=regCourses.reduce((s,c)=>s+(c.pl||0),0), comment=document.getElementById("comment").value.trim();
+  const plDc1=regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
+  const plDc3=regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
   const wname=(user.email||"").split("@")[0]||t().you;
   try{
     const ins=await sb.from("load_records").insert({
       worker_name:wname, worker_id:user.id, destination:dest, truck:truck, pallets:pallets, comment:comment,
+      oki_chi:regOki, pl_dc1:plDc1, pl_dc3:plDc3,
       photo_taken_at:new Date().toISOString(), device_info:navigator.userAgent.slice(0,120)
     }).select().single();
     if(ins.error) throw ins.error;
@@ -630,7 +662,7 @@ async function renderDetail(id){
   if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
   if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
-  const info=[[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,r.worker_name],
+  const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,r.worker_name],
     [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
   let courseBox="";
   if(courses.length){
@@ -651,7 +683,24 @@ async function renderDetail(id){
     ${courseBox}${actions}${adminRow}
   </div>`;
 }
-async function markComplete(id){ await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"積込完了にしました":"Marked loaded"); await loadRecords(); renderDetail(id); }
+async function markComplete(id){
+  await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id);
+  const rec=records.find(x=>String(x.id)===String(id));
+  const warns=[];
+  if(rec && rec.oki_chi){
+    if((rec.pl_dc1||0)>0){
+      const row=pal.find(r=>r.label && r.label.indexOf(rec.oki_chi)===0 && r.label.indexOf("DC1")>=0);
+      if(row) await palAdjust(row.id,-rec.pl_dc1); else warns.push(rec.oki_chi+"→DC1");
+    }
+    if((rec.pl_dc3||0)>0){
+      const row=pal.find(r=>r.label && r.label.indexOf(rec.oki_chi)===0 && r.label.indexOf("DC3")>=0);
+      if(row) await palAdjust(row.id,-rec.pl_dc3); else warns.push(rec.oki_chi+"→DC3");
+    }
+  }
+  toast(lang==="ja"?"積込完了にしました":"Marked loaded");
+  if(warns.length) toast((lang==="ja"?"パレット残数の対象が見つかりません：":"Pallet route not found: ")+warns.join("、"));
+  await loadRecords(); renderDetail(id);
+}
 async function toggleCourse(cid,rid,cur){ await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
 async function confirmDest(id,allChecked){ if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
@@ -726,19 +775,23 @@ let mf={mode:"dest"};
 function masterModeLabel(m){
   if(m==="dest") return t().mDest;
   if(m==="truck") return t().mTruck;
+  if(m==="oki_chi") return t().mOki;
   if(m==="course_dc3") return (lang==="ja"?"DC3行き コース記号":"DC3 course code");
   return (lang==="ja"?"DC1行き コース記号":"DC1 course code");
 }
 function renderMaster(){
   const list=getMaster(mf.mode);
   const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
-  const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1")?t().mCourseNote:t().mNote;
+  const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1")?t().mCourseNote:(mf.mode==="oki_chi"?t().mOkiNote:t().mNote);
   app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
     <div style="display:flex;gap:8px;margin-bottom:8px">
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="display:flex;gap:8px;margin-bottom:8px">
       ${tabBtn("course_dc3",t().candTitle3)}${tabBtn("course_dc1",t().candTitle1)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}
     </div>
     <div style="display:flex;gap:8px">
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
@@ -800,7 +853,7 @@ async function masterDel(i){ if(!confirm(t().mDelQ))return; const row=(masterRow
 }
 async function masterUpload(){
   if(!confirm(lang==="ja"?"この端末のマスタ（車番・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
-  const kinds=["truck","dest","course_dc1","course_dc3"]; let added=0;
+  const kinds=["truck","dest","course_dc1","course_dc3","oki_chi"]; let added=0;
   for(const k of kinds){
     let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+k)||"[]"); }catch(e){}
     const existing=new Set(getMaster(k));
@@ -827,7 +880,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterUpload,renderSearch,renderHistory,renderMaster});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterUpload,renderSearch,renderHistory,renderMaster});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
