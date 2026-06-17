@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>横持ち管理システム</title>
+<title>積込証跡管理システム</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--blue:#2563eb;--amber:#fbbf24;--green:#059669;--teal:#0d9488;--red:#dc2626;--slate:#1e293b;}
@@ -55,7 +55,7 @@
 <div id="app"></div>
 
 <script>
-/* ===== ① https://rlvoptkbeayclspbbkhs.supabase.cosb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t ===== */
+/* ===== ① ここに自分の2つの鍵を入れてください（前のファイルからコピーでOK） ===== */
 const SUPABASE_URL = "https://rlvoptkbeayclspbbkhs.supabase.co";
 const SUPABASE_KEY = "sb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t";
 /* ============================================================================ */
@@ -451,6 +451,7 @@ function pickOki(i){ const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null)
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
+  const _scrollY=window.scrollY;
   const grp=(key,title)=>{
     const arr=getMaster(key); if(!arr.length) return "";
     const inMix = mix && mix.key===key;
@@ -465,7 +466,7 @@ function drawCandidates(){
       </div>`:"";
     const fn = inMix?"mixPick":"addCand";
     return `<div style="margin-bottom:8px">${head}${pickBar}
-      <div style="max-height:150px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
+      <div id="candList_${key}" style="max-height:150px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
       ${arr.map((v,i)=>{const col=colorOf(key,v);return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;}).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
@@ -474,8 +475,18 @@ function drawCandidates(){
       </div>
       <div id="csel_${key}"></div></div>`;
   };
+  const _listScroll={};
+  ["course_dc3","course_dc1"].forEach(k=>{
+    const el=document.getElementById("candList_"+k);
+    if(el) _listScroll[k]=el.scrollTop;
+  });
   area.innerHTML=grp("course_dc3",t().candTitle3)+grp("course_dc1",t().candTitle1);
   drawCourses();
+  window.scrollTo(0,_scrollY);
+  ["course_dc3","course_dc1"].forEach(k=>{
+    const el=document.getElementById("candList_"+k);
+    if(el && _listScroll[k]) el.scrollTop=_listScroll[k];
+  });
 }
 function addCand(key,i){ const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
 function mixToggle(key){ mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
@@ -906,4 +917,3 @@ start();
 </script>
 </body>
 </html>
-   
