@@ -797,6 +797,7 @@ function renderMaster(){
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
       <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
     </div>
+    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1")?`<button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>`:""}
     <p class="hint">${note}</p>
     <div>${list.length?list.map((v,i)=>{
       const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1");
@@ -825,6 +826,24 @@ async function masterAdd(){ const el=document.getElementById("mNew"); const v=el
   const {data,error}=await sb.from("master_items").insert({kind:mf.mode,value:v,sort_order:so,color:""}).select();
   if(error||!data){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
   (masterRows[mf.mode]=masterRows[mf.mode]||[]).push({id:data[0].id,value:v,sort_order:so,color:""}); el.value=""; renderMaster();
+}
+const COURSE_SORT_ORDER={course_dc1:["red","blue",""],course_dc3:["yellow",""]};
+async function masterSortByColor(){
+  const order=COURSE_SORT_ORDER[mf.mode]; if(!order) return;
+  const allColors=MCOLORS.map(c=>c.key);
+  const fullOrder=order.concat(allColors.filter(k=>!order.includes(k)));
+  const labelOf=k=>{ const c=MCOLORS.find(x=>x.key===k); return c?c.label:k; };
+  if(!confirm((lang==="ja"?"次の色の順番でまとめて並べ替えます：\n\n":"Reorder by color:\n\n")+order.map(labelOf).join(" → ")+(lang==="ja"?"\n\nよろしいですか？":"\n\nOK?"))) return;
+  const arr=(masterRows[mf.mode]||[]).slice();
+  const indexed=arr.map((r,idx)=>({r,idx,rank:fullOrder.indexOf(r.color||"")}));
+  indexed.sort((a,b)=>(a.rank-b.rank)||(a.idx-b.idx));
+  const changed=[];
+  indexed.forEach((item,newIdx)=>{ if(item.r.sort_order!==newIdx){ item.r.sort_order=newIdx; changed.push(item.r); } });
+  masterRows[mf.mode]=indexed.map(item=>item.r);
+  renderMaster();
+  const results=await Promise.all(changed.map(r=>sb.from("master_items").update({sort_order:r.sort_order}).eq("id",r.id)));
+  if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
+  else toast(lang==="ja"?"色でまとめて並べ替えました":"Reordered by color");
 }
 async function masterMove(i,dir){
   const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
@@ -880,7 +899,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterUpload,renderSearch,renderHistory,renderMaster});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
