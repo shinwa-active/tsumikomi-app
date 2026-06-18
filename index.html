@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>積込証跡管理システム</title>
+<title>横持ち管理システム</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--blue:#2563eb;--amber:#fbbf24;--green:#059669;--teal:#0d9488;--red:#dc2626;--slate:#1e293b;}
@@ -55,7 +55,7 @@
 <div id="app"></div>
 
 <script>
-/* ===== ① ここに自分の2つの鍵を入れてください（前のファイルからコピーでOK） ===== */
+/* ===== ① https://rlvoptkbeayclspbbkhs.supabase.cosb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t ===== */
 const SUPABASE_URL = "https://rlvoptkbeayclspbbkhs.supabase.co";
 const SUPABASE_KEY = "sb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t";
 /* ============================================================================ */
@@ -120,6 +120,8 @@ const T = {
 let lang = localStorage.getItem("lang") || "ja";
 let role = "worker";
 let adminAuthed = false;
+let isViewOnly = false;
+const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
 let user = null;
 let records = [];
 let view = {name:"home"};
@@ -127,6 +129,8 @@ let signedCache = {};
 const app = document.getElementById("app");
 function t(){ return T[lang]; }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function maskName(s){ s=String(s||""); if(!s) return s; const head=s.slice(0,3); return head+"………"; }
+function viewOnlyBlock(){ toast(lang==="ja"?"閲覧専用のため操作できません":"View-only: cannot operate"); return true; }
 function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
 
 /* ---- マスタ（クラウド共有） ---- */
@@ -199,6 +203,7 @@ async function loadYoko(){
   if(view.name==="home") render();
 }
 async function toggleYoko(id){
+  if(isViewOnly) return viewOnlyBlock();
   const row=yoku.find(x=>x.id===id); if(!row) return;
   let justCompleted=false;
   if(!ydone(row)){
@@ -237,6 +242,7 @@ async function loadPal(){
   if(view.name==="pallet"||view.name==="home") render();
 }
 async function palAdjust(id,delta){
+  if(isViewOnly) return viewOnlyBlock();
   const row=pal.find(x=>x.id===id); if(!row) return;
   let v=palBase(row)+delta; if(v<0) v=0;
   await sb.from("pallet_remain").update({remain:v,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",id);
@@ -249,7 +255,7 @@ function renderPallet(){
         <b style="font-size:16px">${esc(r.label)}</b>
         <span style="margin-left:auto;color:#94a3b8;font-size:12px">${tm?(lang==="ja"?tm+" 時点":tm):(lang==="ja"?"未更新":"—")}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;${isViewOnly?"opacity:.5":""}">
         <button onclick="palAdjust(${r.id},-5)" style="flex:1;background:#fee2e2;color:#b91c1c;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">−5</button>
         <button onclick="palAdjust(${r.id},-1)" style="flex:1;background:#fecaca;color:#991b1b;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">−1</button>
         <div style="flex:1.4;text-align:center"><span style="font-size:30px;font-weight:800;color:#0d9488">${n}</span><span style="font-size:14px;color:#64748b"> PL</span></div>
@@ -261,7 +267,7 @@ function renderPallet(){
   app.innerHTML=topbar()+header(lang==="ja"?"パレット残数":"Pallets left","go('home')")+`<div class="pad">
     <div class="panel" style="background:#f0fdfa;border:none;color:#115e59;text-align:center"><div style="font-size:13px">${lang==="ja"?"残り合計":"Total left"}</div><div style="font-size:30px;font-weight:800">${total}<span style="font-size:15px"> PL</span></div></div>
     ${pal.map(rowHtml).join("")}
-    <p class="hint">${lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。全ドライバーで共有され、翌日は自動でゼロに戻ります。":"Adjust with +/-; time auto-records. Shared with all; resets next day."}</p>
+    <p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のため、数の変更はできません。":"View only: cannot change values."):(lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。全ドライバーで共有され、翌日は自動でゼロに戻ります。":"Adjust with +/-; time auto-records. Shared with all; resets next day.")}</p>
   </div>`+tabbar();
 }
 function openPhoto(i){
@@ -302,6 +308,7 @@ async function doLogin(){
   await afterLogin();
 }
 async function afterLogin(){
+  isViewOnly = !!(user && user.email && VIEW_ONLY_EMAILS.includes(user.email.toLowerCase()));
   await loadRecords();
   await loadYoko();
   await loadPal();
@@ -312,7 +319,7 @@ async function afterLogin(){
     .on("postgres_changes",{event:"*",schema:"public",table:"pallet_remain"},loadPal)
     .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster).subscribe();
 }
-async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; renderLogin(); }
+async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; renderLogin(); }
 
 /* ===================== 画面描画 ===================== */
 function go(name,params){ view=Object.assign({name},params||{}); render(); window.scrollTo(0,0); }
@@ -352,7 +359,7 @@ async function recordCard(r){
       <div>${badges(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span></div>
       <div style="font-weight:bold">${esc(r.destination||t().noDest)}</div>
       <div style="color:#64748b;font-size:14px">${esc(r.truck||t().noTruck)}</div>
-      <div style="color:#64748b;font-size:14px">${t().by(esc(r.worker_name||""),r.pallets||0)}</div>
+      <div style="color:#64748b;font-size:14px">${t().by(esc(maskName(r.worker_name||"")),r.pallets||0)}</div>
     </div></button>`;
 }
 async function listHtml(arr){ const parts=await Promise.all(arr.map(recordCard)); return parts.join(""); }
@@ -364,7 +371,7 @@ async function render(){
     const todays=records.filter(r=>isToday(r.created_at));
     const pr=yoku.filter(r=>r.priority), no=yoku.filter(r=>!r.priority);
     const prDone=pr.filter(ydone).length, allDone=yoku.filter(ydone).length;
-    const ybtn=r=>{ const d=ydone(r); return `<button onclick="toggleYoko(${r.id})" style="text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:10px;display:flex;align-items:center;gap:7px">
+    const ybtn=r=>{ const d=ydone(r); return `<button onclick="toggleYoko(${r.id})" style="text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:10px;display:flex;align-items:center;gap:7px;${isViewOnly?"opacity:.5":""}">
         <span style="font-size:17px">${d?"✅":(r.priority?"🔴":"⬜")}</span>
         <span style="flex:1;font-weight:bold;font-size:13px;line-height:1.3;word-break:break-all">${esc(r.label)}</span>
         ${d?`<span style="color:#15803d;font-weight:bold;font-size:11px;white-space:nowrap">${hhmm(r.done_at)} ${lang==="ja"?"完了":"done"}</span>`:""}
@@ -379,7 +386,7 @@ async function render(){
       <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(pr.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${pr.map(ybtn).join("")}</div>
       <div style="font-weight:bold;color:#475569;margin-top:14px">${lang==="ja"?"通常":"Normal"}</div>
       <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(no.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${no.map(ybtn).join("")}</div>
-      <p class="hint" style="margin-top:8px">${lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day."}</p>
+      <p class="hint" style="margin-top:8px">${isViewOnly?(lang==="ja"?"閲覧専用のため、ここはチェックできません。":"View only: cannot check here."):(lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day.")}</p>
     </div>`;
     const palTotal=pal.reduce((s,r)=>s+palBase(r),0);
     body=header(t().homeTitle)+`<div class="pad">
@@ -412,7 +419,9 @@ async function render(){
 let regPhotos=[], regCourses=[], regOki="";
 function renderRegister(){
   regPhotos.length=0; regCourses.length=0; mix=null; regOki="";
+  const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
   app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
+    ${voNote}
     <label>${t().fOki}</label>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
@@ -435,7 +444,7 @@ function renderRegister(){
     <div id="anom"></div>
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
-    <button class="btn" id="saveBtn" onclick="saveRecord()">✔ ${t().save}</button>
+    <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveRecord()">✔ ${t().save}</button>
   </div>`;
   document.getElementById("file").onchange=onFiles;
   document.getElementById("dest").oninput=document.getElementById("truck").oninput=updateAnom;
@@ -447,7 +456,7 @@ function drawOki(){
   if(!arr.length){ area.innerHTML=`<p class="hint">${lang==="ja"?"管理者マスタ変更で積み地を登録してください":"Ask admin to add loading locations"}</p>`; return; }
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickOki(${i})" style="${regOki===v?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
 }
-function pickOki(i){ const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; regOki=(regOki===v?"":v); drawOki(); updateAnom(); }
+function pickOki(i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; regOki=(regOki===v?"":v); drawOki(); updateAnom(); }
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
@@ -488,17 +497,17 @@ function drawCandidates(){
     if(el && _listScroll[k]) el.scrollTop=_listScroll[k];
   });
 }
-function addCand(key,i){ const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
-function mixToggle(key){ mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
-function mixPick(key,i){ if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
-function mixRemove(idx){ if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
-function mixConfirm(){ if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
+function addCand(key,i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
+function mixToggle(key){ if(isViewOnly) return viewOnlyBlock(); mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
+function mixPick(key,i){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
+function mixRemove(idx){ if(isViewOnly) return viewOnlyBlock(); if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
+function mixConfirm(){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
 function drawSuggest(){
   const mk=(arr,inp)=>arr.map(v=>`<button class="chip" onclick="document.getElementById('${inp}').value=${JSON.stringify(v).replace(/"/g,'&quot;')};updateAnom()">${esc(v)}</button>`).join("");
   document.getElementById("sgDest").innerHTML=mk(suggest("dest"),"dest");
   document.getElementById("sgTruck").innerHTML=mk(suggest("truck"),"truck");
 }
-function onFiles(e){ const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
+function onFiles(e){ if(isViewOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
 function drawPhotos(){
   const a=document.getElementById("photoArea");
   a.innerHTML=regPhotos.map((f,i)=>`<div style="position:relative"><img class="thumb" style="width:80px;height:80px" src="${URL.createObjectURL(f)}"><button onclick="regPhotos.splice(${i},1);drawPhotos();updateAnom()" style="position:absolute;top:-8px;right:-8px;background:#dc2626;color:#fff;border:none;border-radius:999px;width:24px;height:24px">×</button></div>`).join("");
@@ -597,7 +606,7 @@ function closeQr(){
   if(typeof drawCourses==="function") drawCourses();
 }
 function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); }
-function addCourseG(key){ const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return; const c=ci.value.trim(); if(!c) return; const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses(); }
+function addCourseG(key){ if(isViewOnly) return viewOnlyBlock(); const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return; const c=ci.value.trim(); if(!c) return; const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses(); }
 function courseRow(c,i){
   return `<div style="flex:0 0 calc(50% - 4px);min-width:0;box-sizing:border-box;display:flex;align-items:center;gap:6px;background:#f8fafc;border-radius:10px;padding:7px 10px"><b style="word-break:break-all;font-size:14px">${esc(c.code)}</b>${c.mixed?`<span style="background:#ede9fe;color:#6d28d9;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:bold;white-space:nowrap">${lang==="ja"?"混載":"mix"}</span>`:""}<span style="color:#64748b;font-size:13px;white-space:nowrap">${c.pl} PL</span><button onclick="regCourses.splice(${i},1);drawCourses()" style="margin-left:auto;background:none;border:none;color:#f87171;font-size:18px;line-height:1">×</button></div>`;
 }
@@ -632,6 +641,7 @@ function updateAnom(){
   const b=document.getElementById("saveBtn"); if(b) b.style.background=a.length?"#f97316":"#2563eb";
 }
 async function saveRecord(){
+  if(isViewOnly) return viewOnlyBlock();
   const a=anomList();
   if(a.length && !confirm((lang==="ja"?"不足があります：\n\n":"Missing:\n\n")+a.join("\n")+(lang==="ja"?"\n\nこのまま登録しますか？":"\n\nSave anyway?"))) return;
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
@@ -673,19 +683,19 @@ async function renderDetail(id){
   if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
   if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
-  const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,r.worker_name],
+  const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,maskName(r.worker_name)],
     [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
   let courseBox="";
   if(courses.length){
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
-      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
-      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed)?"opacity:.5":""}">
+      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のためチェックできません":"View only: cannot check"):t().tapCheck}</p>`:""}
+      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed||isViewOnly)?"opacity:.5":""}">
         <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
   }
   let actions="";
-  if(!r.completed) actions+=`<button class="btn green" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
+  if(!r.completed) actions+=`<button class="btn green" style="${isViewOnly?"opacity:.5":""}" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
   if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
-    <button class="btn teal" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
+    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
   let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
@@ -695,6 +705,7 @@ async function renderDetail(id){
   </div>`;
 }
 async function markComplete(id){
+  if(isViewOnly) return viewOnlyBlock();
   await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id);
   const rec=records.find(x=>String(x.id)===String(id));
   const warns=[];
@@ -712,9 +723,9 @@ async function markComplete(id){
   if(warns.length) toast((lang==="ja"?"パレット残数の対象が見つかりません：":"Pallet route not found: ")+warns.join("、"));
   await loadRecords(); renderDetail(id);
 }
-async function toggleCourse(cid,rid,cur){ await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
-async function confirmDest(id,allChecked){ if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
-async function delRecord(id){ if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
+async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
+async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
+async function delRecord(id){ if(isViewOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
 
 /* ---------- ダッシュボード ---------- */
 function renderDashboard(){
@@ -731,7 +742,7 @@ function renderDashboard(){
       <div class="stat"><div class="hint">${t().sWorkers}</div><div class="n" style="color:#059669">${Object.keys(byW).length}</div></div>
     </div>
     <div class="panel" style="margin-top:12px"><b>${t().byWorker}</b>
-      ${Object.entries(byW).map(([w,n])=>`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><div style="width:64px;font-size:14px;color:#475569">${esc(w)}</div><div style="flex:1;background:#f1f5f9;border-radius:999px"><div class="bar" style="width:${Math.round(n/maxW*100)}%">${n}</div></div></div>`).join("")||`<p class="hint">${t().mEmpty}</p>`}
+      ${Object.entries(byW).map(([w,n])=>`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><div style="width:64px;font-size:14px;color:#475569">${esc(maskName(w))}</div><div style="flex:1;background:#f1f5f9;border-radius:999px"><div class="bar" style="width:${Math.round(n/maxW*100)}%">${n}</div></div></div>`).join("")||`<p class="hint">${t().mEmpty}</p>`}
     </div>
   </div>`+tabbar();
 }
