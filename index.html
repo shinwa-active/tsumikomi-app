@@ -688,8 +688,8 @@ async function renderDetail(id){
   let courseBox="";
   if(courses.length){
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
-      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のためチェックできません":"View only: cannot check"):t().tapCheck}</p>`:""}
-      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed||isViewOnly)?"opacity:.5":""}">
+      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
+      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed)?"opacity:.5":""}">
         <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
   }
   let actions="";
@@ -721,9 +721,10 @@ async function markComplete(id){
   }
   toast(lang==="ja"?"積込完了にしました":"Marked loaded");
   if(warns.length) toast((lang==="ja"?"パレット残数の対象が見つかりません：":"Pallet route not found: ")+warns.join("、"));
-  await loadRecords(); renderDetail(id);
+  await loadRecords();
+  if(role==="worker") go("home"); else renderDetail(id);
 }
-async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
+async function toggleCourse(cid,rid,cur){ await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
 
