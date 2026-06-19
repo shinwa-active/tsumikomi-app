@@ -55,7 +55,7 @@
 <div id="app"></div>
 
 <script>
-/* ===== ① https://rlvoptkbeayclspbbkhs.supabase.cosb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t ===== */
+/* ===== ① ここに自分の2つの鍵を入れてください（前のファイルからコピーでOK） ===== */
 const SUPABASE_URL = "https://rlvoptkbeayclspbbkhs.supabase.co";
 const SUPABASE_KEY = "sb_publishable_WubvX5CkWo0DgdgI8mGW_g_-TAcjX2t";
 /* ============================================================================ */
@@ -248,6 +248,46 @@ async function palAdjust(id,delta){
   await sb.from("pallet_remain").update({remain:v,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",id);
   await loadPal();
 }
+
+/* ---- 物量管理 ---- */
+let vol=[];
+function volTodayVal(r){ return r.updated_date===todayStr() ? r.today_value : null; }
+function volTodayOk(r){ return r.updated_date===todayStr() ? !!r.today_ok : false; }
+function volDeadlinePassed(r){
+  if(r.deadline_hour==null) return false;
+  const n=new Date();
+  const dl=new Date(); dl.setHours(r.deadline_hour, r.deadline_minute||0, 0, 0);
+  return n>dl;
+}
+function volStatus(r){
+  const v=volTodayVal(r);
+  if(v==null){ return volDeadlinePassed(r) ? "missing" : "none"; }
+  if(volTodayOk(r)) return "ok";
+  if(r.alert_value!=null && v>=r.alert_value) return "alert";
+  if(r.warn_value!=null && v>=r.warn_value) return "warn";
+  return "ok";
+}
+async function loadVol(){
+  const {data,error}=await sb.from("volume_shipment").select("*").order("sort_order",{ascending:true});
+  if(error){ console.error(error); return; }
+  vol=data||[];
+  if(view.name==="volume"||view.name==="home") render();
+}
+async function volSave(){
+  if(isViewOnly) return viewOnlyBlock();
+  const rows=vol.map(r=>{
+    const inp=document.getElementById("vv_"+r.id);
+    const chk=document.getElementById("vc_"+r.id);
+    const val=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
+    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false};
+  });
+  for(const row of rows){
+    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
+  }
+  toast(lang==="ja"?"物量を保存しました":"Saved");
+  await loadVol();
+  go("home");
+}
 function renderPallet(){
   const rowHtml=r=>{ const n=palBase(r); const tm=palTime(r);
     return `<div class="panel" style="margin-bottom:10px">
@@ -268,6 +308,30 @@ function renderPallet(){
     <div class="panel" style="background:#f0fdfa;border:none;color:#115e59;text-align:center"><div style="font-size:13px">${lang==="ja"?"残り合計":"Total left"}</div><div style="font-size:30px;font-weight:800">${total}<span style="font-size:15px"> PL</span></div></div>
     ${pal.map(rowHtml).join("")}
     <p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のため、数の変更はできません。":"View only: cannot change values."):(lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。全ドライバーで共有され、翌日は自動でゼロに戻ります。":"Adjust with +/-; time auto-records. Shared with all; resets next day.")}</p>
+  </div>`+tabbar();
+}
+function renderVolume(){
+  const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569"><b>👁 ${lang==="ja"?"閲覧専用です。入力はできません。":"View only. Cannot input."}</b></div>`:"";
+  const rowHtml=r=>{
+    const v=volTodayVal(r); const ok=volTodayOk(r);
+    const dlText = r.deadline_hour!=null ? (lang==="ja"?`${r.deadline_hour}時${(r.deadline_minute||0)>0?(r.deadline_minute+"分"):""}までに入力`:`Enter by ${r.deadline_hour}:${("0"+(r.deadline_minute||0)).slice(-2)}`) : "";
+    return `<div class="panel" style="margin-bottom:10px">
+      <b style="font-size:16px">${esc(r.label)}</b>
+      <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${isViewOnly?"disabled":""}>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
+        <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${isViewOnly?"disabled":""}>
+        <span style="font-size:14px">${lang==="ja"?"問題なし（塊出荷の為など）":"No issue (e.g. bulk shipment)"}</span>
+      </label>
+      ${dlText?`<p class="hint" style="margin-top:6px">${dlText}</p>`:""}
+    </div>`;
+  };
+  app.innerHTML=topbar()+header(lang==="ja"?"物量入力":"Volume input","go('home')")+`<div class="pad" style="padding-bottom:110px">
+    ${voNote}
+    <div class="panel" style="background:#eff6ff;border:none;color:#1e3a8a;text-align:center"><b>${dayLabel(new Date().toISOString())} ${new Date().getFullYear()}/${new Date().getMonth()+1}/${new Date().getDate()}</b></div>
+    ${vol.map(rowHtml).join("")}
+  </div>
+  <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
+    <button class="btn" style="${isViewOnly?"opacity:.4":""}" onclick="volSave()">✔ ${lang==="ja"?"保存する":"Save"}</button>
   </div>`+tabbar();
 }
 function openPhoto(i){
@@ -313,11 +377,13 @@ async function afterLogin(){
   await loadYoko();
   await loadPal();
   await loadMaster();
+  await loadVol();
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"load_records"},loadRecords)
     .on("postgres_changes",{event:"*",schema:"public",table:"courses"},loadRecords)
     .on("postgres_changes",{event:"*",schema:"public",table:"yokomochi_status"},loadYoko)
     .on("postgres_changes",{event:"*",schema:"public",table:"pallet_remain"},loadPal)
-    .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster).subscribe();
+    .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster)
+    .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol).subscribe();
 }
 async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; renderLogin(); }
 
@@ -389,6 +455,26 @@ async function render(){
       <p class="hint" style="margin-top:8px">${isViewOnly?(lang==="ja"?"閲覧専用のため、ここはチェックできません。":"View only: cannot check here."):(lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day.")}</p>
     </div>`;
     const palTotal=pal.reduce((s,r)=>s+palBase(r),0);
+    const volStatusInfo={
+      none:{color:"#94a3b8",bg:"#f8fafc",bd:"#e2e8f0",icon:"⬜",label:lang==="ja"?"未入力":"No input"},
+      missing:{color:"#1e3a8a",bg:"#eef2ff",bd:"#1e3a8a",icon:"📝",label:lang==="ja"?"入力してください":"Please enter"},
+      ok:{color:"#15803d",bg:"#f0fdf4",bd:"#bbf7d0",icon:"✅",label:lang==="ja"?"正常":"OK"},
+      warn:{color:"#b45309",bg:"#fffbeb",bd:"#fde68a",icon:"🟡",label:lang==="ja"?"注意":"Caution"},
+      alert:{color:"#b91c1c",bg:"#fef2f2",bd:"#fecaca",icon:"🔴",label:lang==="ja"?"警告":"Alert"}
+    };
+    const volBoard=vol.length?`<div class="panel" style="margin-top:14px">
+      <b>📊 ${lang==="ja"?"物量アラート一覧":"Volume alerts"}</b>
+      <div style="margin-top:10px">
+        ${vol.map(r=>{
+          const st=volStatus(r); const info=volStatusInfo[st]; const v=volTodayVal(r);
+          return `<div style="display:flex;align-items:center;gap:8px;border:2px solid ${info.bd};background:${info.bg};border-radius:10px;padding:10px;margin-top:6px">
+            <span style="font-size:18px">${info.icon}</span>
+            <span style="flex:1;font-weight:bold;font-size:14px">${esc(r.label)}</span>
+            <span style="color:${info.color};font-weight:bold;font-size:13px">${v!=null?v:""} ${info.label}</span>
+          </div>`;
+        }).join("")}
+      </div>
+    </div>`:"";
     body=header(t().homeTitle)+`<div class="pad">
       <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
       <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
@@ -396,13 +482,16 @@ async function render(){
         <button class="btn ghost" style="flex:1;margin:0" onclick="go('list')">📋 ${t().viewList}</button>
       </div>
       <button class="btn teal" style="margin-top:10px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
+      <button class="btn" style="margin-top:10px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>
       ${board}
+      ${volBoard}
       <button class="btn ghost small" style="margin:16px auto 0;width:auto" onclick="logout()">${t().logout}</button>
     </div>`;
     app.innerHTML=topbar()+body+tabbar();
   }
   else if(view.name==="register"){ renderRegister(); return; }
   else if(view.name==="pallet"){ renderPallet(); return; }
+  else if(view.name==="volume"){ renderVolume(); return; }
   else if(view.name==="list"){
     app.innerHTML=topbar()+header(t().listTitle,role==="worker"?"go('home')":null)+`<div class="pad" id="lst">${t().loading}</div>`+tabbar();
     document.getElementById("lst").innerHTML=await listHtml(records);
@@ -803,6 +892,7 @@ function masterModeLabel(m){
   return (lang==="ja"?"DC1行き コース記号":"DC1 course code");
 }
 function renderMaster(){
+  if(mf.mode==="volume"){ renderMasterVolume(); return; }
   const list=getMaster(mf.mode);
   const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
   const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1")?t().mCourseNote:(mf.mode==="oki_chi"?t().mOkiNote:t().mNote);
@@ -814,7 +904,7 @@ function renderMaster(){
       ${tabBtn("course_dc3",t().candTitle3)}${tabBtn("course_dc1",t().candTitle1)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("oki_chi","🏭 "+t().mOki)}
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}
     </div>
     <div style="display:flex;gap:8px">
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
@@ -843,6 +933,82 @@ function renderMaster(){
       <button class="btn ghost small" onclick="masterUpload()">⬆ ${lang==="ja"?"この端末のマスタをクラウドに引き継ぐ":"Upload this device's master"}</button>
     </div>
   </div>`+tabbar();
+}
+function renderMasterVolume(){
+  const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
+  const rowHtml=(r,i)=>`<div class="card" style="display:block">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="chip" style="padding:8px 14px;font-size:18px;${i===0?"opacity:.35":""}" onclick="masterVolMove(${i},-1)">▲</button>
+          <button class="chip" style="padding:8px 14px;font-size:18px;${i===vol.length-1?"opacity:.35":""}" onclick="masterVolMove(${i},1)">▼</button>
+        </div>
+        <input id="mv_label_${r.id}" value="${esc(r.label)}" style="flex:1;font-weight:600">
+        <button class="chip" style="color:#dc2626" onclick="masterVolDel(${r.id})">🗑</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"締切 時":"Deadline hour"}</label><input id="mv_h_${r.id}" inputmode="numeric" value="${r.deadline_hour!=null?r.deadline_hour:""}" placeholder="0-23"></div>
+        <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"締切 分":"Deadline min"}</label><input id="mv_m_${r.id}" inputmode="numeric" value="${r.deadline_minute!=null?r.deadline_minute:""}" placeholder="0-59"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"平均":"Avg"}</label><input id="mv_avg_${r.id}" inputmode="numeric" value="${r.avg_value!=null?r.avg_value:""}"></div>
+        <div style="flex:1"><label style="font-size:12px;color:#b45309;font-weight:normal">${lang==="ja"?"注意":"Warn"}</label><input id="mv_warn_${r.id}" inputmode="numeric" value="${r.warn_value!=null?r.warn_value:""}"></div>
+        <div style="flex:1"><label style="font-size:12px;color:#b91c1c;font-weight:normal">${lang==="ja"?"警告":"Alert"}</label><input id="mv_alert_${r.id}" inputmode="numeric" value="${r.alert_value!=null?r.alert_value:""}"></div>
+      </div>
+      <button class="btn small ghost" style="width:100%;margin-top:8px" onclick="masterVolSave(${r.id})">${lang==="ja"?"この場所を保存":"Save this row"}</button>
+    </div>`;
+  app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("course_dc3",t().candTitle3)}${tabBtn("course_dc1",t().candTitle1)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}
+    </div>
+    <div style="display:flex;gap:8px">
+      <input id="mvNew" placeholder="${lang==="ja"?"場所の名前":"Location name"}" style="flex:1">
+      <button class="btn small" style="padding:0 16px" onclick="masterVolAdd()">＋ ${t().mAdd}</button>
+    </div>
+    <p class="hint" style="margin-top:8px">${lang==="ja"?"入力値が「注意」以上で黄色、「警告」以上で赤色になります。各項目を直したら「この場所を保存」を押してください。":"Values at or above Warn turn yellow; at or above Alert turn red. Press save after editing."}</p>
+    <div style="margin-top:10px">${vol.length?vol.map(rowHtml).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
+  </div>`+tabbar();
+}
+async function masterVolAdd(){
+  const el=document.getElementById("mvNew"); const v=el.value.trim(); if(!v) return;
+  const so=vol.reduce((mx,r)=>Math.max(mx,r.sort_order||0),0)+1;
+  const {error}=await sb.from("volume_shipment").insert({label:v,sort_order:so});
+  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  el.value=""; await loadVol(); renderMaster();
+}
+async function masterVolDel(id){
+  if(!confirm(t().mDelQ)) return;
+  const {error}=await sb.from("volume_shipment").delete().eq("id",id);
+  if(error){ toast(lang==="ja"?"削除に失敗しました":"Delete failed"); return; }
+  await loadVol(); renderMaster();
+}
+async function masterVolMove(i,dir){
+  const j=i+dir; if(j<0||j>=vol.length) return;
+  const arr=vol.slice(); const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
+  const changed=[];
+  arr.forEach((r,idx)=>{ if(r.sort_order!==idx){ r.sort_order=idx; changed.push(r); } });
+  vol=arr; renderMaster();
+  const results=await Promise.all(changed.map(r=>sb.from("volume_shipment").update({sort_order:r.sort_order}).eq("id",r.id)));
+  if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadVol(); }
+}
+async function masterVolSave(id){
+  const g=k=>{ const el=document.getElementById(k+"_"+id); if(!el) return null; const s=el.value.trim(); return s===""?null:parseInt(s); };
+  const label=document.getElementById("mv_label_"+id).value.trim();
+  const payload={
+    label: label||undefined,
+    deadline_hour:g("mv_h"), deadline_minute:g("mv_m"),
+    avg_value:g("mv_avg"), warn_value:g("mv_warn"), alert_value:g("mv_alert")
+  };
+  if(!label){ toast(lang==="ja"?"名前を入力してください":"Name is required"); return; }
+  const {error}=await sb.from("volume_shipment").update(payload).eq("id",id);
+  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  toast(lang==="ja"?"保存しました":"Saved");
+  await loadVol(); renderMaster();
 }
 async function masterAdd(){ const el=document.getElementById("mNew"); const v=el.value.trim(); if(!v)return; if(getMaster(mf.mode).includes(v)){ el.value=""; return; }
   const so=(masterRows[mf.mode]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0)+1;
@@ -922,7 +1088,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
