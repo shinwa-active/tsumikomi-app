@@ -49,6 +49,27 @@
   .hint{color:#94a3b8;font-size:12px;}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
   .center{display:flex;align-items:center;justify-content:center;min-height:70vh;flex-direction:column;}
+  .cand-list{max-height:150px;}
+
+  /* ===== PC・タブレット対応（768px以上） ===== */
+  @media (min-width:768px){
+    #app{max-width:1100px;padding-bottom:24px;}
+    .tabbar{max-width:1100px;}
+    .toast{max-width:1100px;}
+    .header{position:sticky;}
+    .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+    .list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+    .list-grid .card{margin-bottom:0;}
+    .dash-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+    .cand-list{max-height:420px;}
+  }
+  @media (min-width:1100px){
+    #app{max-width:1280px;}
+    .tabbar{max-width:1280px;}
+    .toast{max-width:1280px;}
+    .list-grid{grid-template-columns:repeat(auto-fill,minmax(300px,1fr));}
+    .cand-list{max-height:520px;}
+  }
 </style>
 </head>
 <body>
@@ -437,10 +458,19 @@ async function render(){
     const todays=records.filter(r=>isToday(r.created_at));
     const pr=yoku.filter(r=>r.priority), no=yoku.filter(r=>!r.priority);
     const prDone=pr.filter(ydone).length, allDone=yoku.filter(ydone).length;
-    const ybtn=r=>{ const d=ydone(r); return `<button onclick="toggleYoko(${r.id})" style="text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:10px;display:flex;align-items:center;gap:7px;${isViewOnly?"opacity:.5":""}">
-        <span style="font-size:17px">${d?"✅":(r.priority?"🔴":"⬜")}</span>
-        <span style="flex:1;font-weight:bold;font-size:13px;line-height:1.3;word-break:break-all">${esc(r.label)}</span>
-        ${d?`<span style="color:#15803d;font-weight:bold;font-size:11px;white-space:nowrap">${hhmm(r.done_at)} ${lang==="ja"?"完了":"done"}</span>`:""}
+    const splitYokoLabel=lbl=>{
+      const m=String(lbl||"").match(/^(.*?)(（[^（）]*）)\s*$/);
+      return m ? {main:m[1].trim(), tag:m[2]} : {main:lbl, tag:""};
+    };
+    const ybtn=r=>{ const d=ydone(r); const {main,tag}=splitYokoLabel(r.label);
+      const mainSize = main.length>=11 ? "10.5px" : (main.length>=9 ? "11.5px" : "13px");
+      return `<button onclick="toggleYoko(${r.id})" style="text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:10px;display:flex;align-items:flex-start;gap:7px;${isViewOnly?"opacity:.5":""}">
+        <span style="font-size:17px;margin-top:1px">${d?"✅":(r.priority?"🔴":"⬜")}</span>
+        <span style="flex:1;min-width:0">
+          <span style="display:block;font-weight:bold;font-size:${mainSize};line-height:1.3;white-space:nowrap;overflow:hidden">${esc(main)}</span>
+          ${tag?`<span style="display:block;font-weight:600;font-size:11px;color:#92400e;margin-top:2px">${esc(tag)}</span>`:""}
+          ${d?`<span style="display:block;color:#15803d;font-weight:bold;font-size:11px;margin-top:2px">${hhmm(r.done_at)} ${lang==="ja"?"完了":"done"}</span>`:""}
+        </span>
       </button>`; };
     const board=`<div class="panel" style="margin-top:14px">
       <b>🚚 ${lang==="ja"?"横持ち 本日の進捗":"Yokomochi today"}</b>
@@ -476,16 +506,22 @@ async function render(){
       </div>
     </div>`:"";
     body=header(t().homeTitle)+`<div class="pad">
-      <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
-      <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
-        <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a;text-align:center;display:flex;flex-direction:column;justify-content:center"><div style="font-size:13px">${t().today}</div><div style="font-size:24px;font-weight:800">${todays.length}<span style="font-size:14px"> ${t().ken}</span></div></div>
-        <button class="btn ghost" style="flex:1;margin:0" onclick="go('list')">📋 ${t().viewList}</button>
+      <div class="home-grid">
+        <div class="home-left">
+          <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
+          <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
+            <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a;text-align:center;display:flex;flex-direction:column;justify-content:center"><div style="font-size:13px">${t().today}</div><div style="font-size:24px;font-weight:800">${todays.length}<span style="font-size:14px"> ${t().ken}</span></div></div>
+            <button class="btn ghost" style="flex:1;margin:0;line-height:1.4" onclick="go('list')">📋 ${lang==="ja"?"横持ち済み<br>一覧を見る":"View all<br>records"}</button>
+          </div>
+          <button class="btn teal" style="margin-top:10px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
+          <button class="btn" style="margin-top:10px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>
+          <button class="btn ghost small" style="margin:16px auto 0;width:auto" onclick="logout()">${t().logout}</button>
+        </div>
+        <div class="home-right">
+          ${board}
+          ${volBoard}
+        </div>
       </div>
-      <button class="btn teal" style="margin-top:10px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
-      <button class="btn" style="margin-top:10px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>
-      ${board}
-      ${volBoard}
-      <button class="btn ghost small" style="margin:16px auto 0;width:auto" onclick="logout()">${t().logout}</button>
     </div>`;
     app.innerHTML=topbar()+body+tabbar();
   }
@@ -493,7 +529,7 @@ async function render(){
   else if(view.name==="pallet"){ renderPallet(); return; }
   else if(view.name==="volume"){ renderVolume(); return; }
   else if(view.name==="list"){
-    app.innerHTML=topbar()+header(t().listTitle,role==="worker"?"go('home')":null)+`<div class="pad" id="lst">${t().loading}</div>`+tabbar();
+    app.innerHTML=topbar()+header(t().listTitle,role==="worker"?"go('home')":null)+`<div class="pad"><div id="lst" class="list-grid">${t().loading}</div></div>`+tabbar();
     document.getElementById("lst").innerHTML=await listHtml(records);
   }
   else if(view.name==="detail"){ renderDetail(view.id); return; }
@@ -564,7 +600,7 @@ function drawCandidates(){
       </div>`:"";
     const fn = inMix?"mixPick":"addCand";
     return `<div style="margin-bottom:8px">${head}${pickBar}
-      <div id="candList_${key}" style="max-height:150px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
+      <div id="candList_${key}" class="cand-list" style="overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
       ${arr.map((v,i)=>{const col=colorOf(key,v);return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;}).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
@@ -825,7 +861,7 @@ function renderDashboard(){
   const byW={}; todays.forEach(r=>{const w=r.worker_name||"-";byW[w]=(byW[w]||0)+1;});
   const maxW=Math.max(1,...Object.values(byW),1);
   app.innerHTML=topbar()+header(t().dashTitle)+`<div class="pad">
-    <div class="grid2">
+    <div class="grid2 dash-grid4">
       <div class="stat"><div class="hint">${t().sToday}</div><div class="n" style="color:#2563eb">${todays.length}</div></div>
       <div class="stat"><div class="hint">${t().sPending}</div><div class="n" style="color:#d97706">${pending}</div></div>
       <div class="stat"><div class="hint">${t().sRecv}</div><div class="n" style="color:#0d9488">${notRecv}</div></div>
