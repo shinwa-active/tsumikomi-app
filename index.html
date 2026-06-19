@@ -332,7 +332,7 @@ function renderVolume(){
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
     <button class="btn" style="${isViewOnly?"opacity:.4":""}" onclick="volSave()">✔ ${lang==="ja"?"保存する":"Save"}</button>
-  </div>`+tabbar();
+  </div>`;
 }
 function openPhoto(i){
   const u=(window._photoUrls||[])[i]; if(!u) return;
