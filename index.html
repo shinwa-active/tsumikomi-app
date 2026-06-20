@@ -605,12 +605,22 @@ function renderAddMore(id){
     ${voNote}
     <div class="panel" style="background:#eff6ff;border:none;color:#1e3a8a">
       <b>${lang==="ja"?"このトラックに追加します":"Adding to this truck"}</b>
-      <div style="margin-top:6px;font-size:14px">${esc(r.truck||t().noTruck)} ／ ${esc(r.destination||t().noDest)}</div>
+      <div style="margin-top:6px;font-size:14px">${esc(r.truck||t().noTruck)}</div>
+      <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの納品先：":"Destination so far: "}${esc(r.destination||t().none)}</div>
       <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの積み地：":"Loaded so far: "}${esc(r.oki_chi||t().none)}</div>
     </div>
     <label>${t().fOki}</label>
     <p class="hint">${lang==="ja"?"今回追加で積む場所を選んでください":"Choose the location for this additional load"}</p>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+
+    <label>${t().fDest}</label>
+    <p class="hint">${lang==="ja"?"納品先が追加で増える場合だけ選んでください（変わらない場合は空のままでOK）":"Only choose if there's an additional destination (leave empty if unchanged)"}</p>
+    <div id="destChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+    <div id="sgDest" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="destInput" placeholder="${t().phDest}" style="flex:1">
+      <button class="btn small" style="padding:0 16px" onclick="addDest()">＋ ${t().add}</button>
+    </div>
 
     <label>${t().coursesLabel}</label>
     <p class="hint">${t().qrHint}</p>
@@ -621,7 +631,7 @@ function renderAddMore(id){
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
     <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveAddMore('${id}')">✔ ${lang==="ja"?"追加を保存":"Save addition"}</button>
   </div>`;
-  drawOki(); drawCandidates(); drawCourses(); updateAnomAddMore();
+  drawOki(); drawDestChips(); drawSuggest(); drawCandidates(); drawCourses(); updateAnomAddMore();
 }
 function updateAnomAddMore(){
   const a=[]; if(!regOki.length)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing"); if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
@@ -640,6 +650,8 @@ async function saveAddMore(id){
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
   const existingOki = r.oki_chi ? String(r.oki_chi).split("、").filter(Boolean) : [];
   const mergedOki = [...new Set([...existingOki, ...regOki])];
+  const existingDest = r.destination ? String(r.destination).split("、").filter(Boolean) : [];
+  const mergedDest = [...new Set([...existingDest, ...regDests])];
   const addPl = regCourses.reduce((s,c)=>s+(c.pl||0),0);
   const addPlDc1 = regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
   const addPlDc3 = regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
@@ -647,6 +659,7 @@ async function saveAddMore(id){
     await sb.from("courses").insert(regCourses.map(c=>({record_id:r.id,code:c.code,pl:c.pl,checked:false})));
     await sb.from("load_records").update({
       oki_chi: mergedOki.join("、"),
+      destination: mergedDest.join("、"),
       pallets: (r.pallets||0)+addPl,
       pl_dc1: (r.pl_dc1||0)+addPlDc1,
       pl_dc3: (r.pl_dc3||0)+addPlDc3
@@ -712,8 +725,10 @@ function mixRemove(idx){ if(isViewOnly) return viewOnlyBlock(); if(!mix) return;
 function mixConfirm(){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
 function drawSuggest(){
   const mk=(arr,inp)=>arr.map(v=>`<button class="chip" onclick="document.getElementById('${inp}').value=${JSON.stringify(v).replace(/"/g,'&quot;')};updateAnom()">${esc(v)}</button>`).join("");
-  document.getElementById("sgDest").innerHTML=suggest("dest").map(v=>`<button class="chip" onclick="toggleDestSuggest(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
-  document.getElementById("sgTruck").innerHTML=mk(suggest("truck"),"truck");
+  const sgDestEl=document.getElementById("sgDest");
+  if(sgDestEl) sgDestEl.innerHTML=suggest("dest").map(v=>`<button class="chip" onclick="toggleDestSuggest(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
+  const sgTruckEl=document.getElementById("sgTruck");
+  if(sgTruckEl) sgTruckEl.innerHTML=mk(suggest("truck"),"truck");
 }
 function drawDestChips(){
   const el=document.getElementById("destChips"); if(!el) return;
@@ -722,16 +737,16 @@ function drawDestChips(){
 function toggleDestSuggest(v){
   if(isViewOnly) return viewOnlyBlock();
   const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v);
-  drawDestChips(); drawSuggest(); updateAnom();
+  drawDestChips(); drawSuggest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
 }
 function addDest(){
   if(isViewOnly) return viewOnlyBlock();
   const inp=document.getElementById("destInput"); if(!inp) return;
   const v=inp.value.trim(); if(!v) return;
   if(!regDests.includes(v)) regDests.push(v);
-  inp.value=""; drawDestChips(); drawSuggest(); updateAnom();
+  inp.value=""; drawDestChips(); drawSuggest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
 }
-function removeDest(i){ if(isViewOnly) return viewOnlyBlock(); regDests.splice(i,1); drawDestChips(); drawSuggest(); updateAnom(); }
+function removeDest(i){ if(isViewOnly) return viewOnlyBlock(); regDests.splice(i,1); drawDestChips(); drawSuggest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function onFiles(e){ if(isViewOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
 function drawPhotos(){
   const a=document.getElementById("photoArea");
