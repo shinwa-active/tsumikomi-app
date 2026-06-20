@@ -150,7 +150,7 @@ let signedCache = {};
 const app = document.getElementById("app");
 function t(){ return T[lang]; }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-function maskName(s){ s=String(s||""); if(!s) return s; if(/^U\d{6}/.test(s)) return s; const head=s.slice(0,3); return head+"………"; }
+function maskName(s){ s=String(s||""); if(!s) return s; if(/^U\d{6}/i.test(s)) return s; const head=s.slice(0,3); return head+"………"; }
 function viewOnlyBlock(){ toast(lang==="ja"?"閲覧専用のため操作できません":"View-only: cannot operate"); return true; }
 function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
 
