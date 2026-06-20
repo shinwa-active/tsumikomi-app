@@ -106,7 +106,7 @@ const T = {
    dashTitle:"ダッシュボード",sToday:"本日の積込",sPending:"未完了",sRecv:"納品先未完了",sWorkers:"担当者数",byWorker:"担当者別（本日）",
    searchTitle:"検索",fDate:"日付",all:"すべて",results:n=>`${n} 件`,csv:"CSVで出す",csvDone:"CSVを書き出しました",
    histTitle:"履歴",byTruck:"トラック別",byDest:"納品先別",choose:"選んでください",back:"選びなおす",loadings:n=>`${n} 件`,
-   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"トラック",mOki:"積み地",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・トラックが、横持ち登録画面の候補に出ます（この端末に保存）。",mOkiNote:"ここの積み地が、横持ち登録画面の候補に出ます。",
+   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"トラック",mOki:"積み地",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・トラックが、横持ち登録画面の候補に出ます（全員で共有）。トラックは横持ち登録時に手入力すると自動でここに追加されます。増えすぎた古いものは、ここから消してください。",mOkiNote:"ここの積み地が、横持ち登録画面の候補に出ます。",
    candTitle3:"DC3行き",candTitle1:"DC1行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
    tHome:"ホーム",tList:"一覧",tDash:"集計",tSearch:"検索",tHist:"履歴",tMaster:"マスタ",settings:"設定",language:"言語",
    loginTitle:"横持ち管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
@@ -130,7 +130,7 @@ const T = {
    dashTitle:"Dashboard",sToday:"Loadings",sPending:"Pending",sRecv:"Not received",sWorkers:"Workers",byWorker:"By worker (today)",
    searchTitle:"Search",fDate:"Date",all:"All",results:n=>`${n} records`,csv:"Export CSV",csvDone:"CSV exported",
    histTitle:"History",byTruck:"By truck",byDest:"By destination",choose:"Choose",back:"Back",loadings:n=>`${n} loadings`,
-   masterTitle:"Master data",mDest:"Destinations",mTruck:"Trucks",mOki:"Loading locations",mAdd:"Add",mSave:"Save",mDelQ:"Delete?",mEmpty:"None",mNote:"These appear as suggestions when capturing (saved on this device).",mOkiNote:"These appear as candidates on the new-record screen.",
+   masterTitle:"Master data",mDest:"Destinations",mTruck:"Trucks",mOki:"Loading locations",mAdd:"Add",mSave:"Save",mDelQ:"Delete?",mEmpty:"None",mNote:"These appear as suggestions on the registration screen (shared with everyone). Trucks entered manually are added here automatically; delete old ones here to keep the list tidy.",mOkiNote:"These appear as candidates on the new-record screen.",
    candTitle3:"To DC3",candTitle1:"To DC1",mCourseNote:"These course codes appear as candidates when capturing (saved on this device).",
    tHome:"Home",tList:"List",tDash:"Stats",tSearch:"Search",tHist:"History",tMaster:"Master",settings:"Settings",language:"Language",
    loginTitle:"Yokomochi Management System",loginSub:"Please log in.",email:"Email",pass:"Password",login:"Log in",loggingIn:"Checking…",loginNg:"Cannot log in: ",
@@ -721,17 +721,18 @@ function mixRemove(idx){ if(isViewOnly) return viewOnlyBlock(); if(!mix) return;
 function mixConfirm(){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
 function drawDest(){
   const area=document.getElementById("destArea"); if(!area) return;
-  const arr=suggest("dest");
+  const arr=getMaster("dest");
   if(!arr.length){ area.innerHTML=`<p class="hint">${lang==="ja"?"管理者マスタ変更で納品先を登録してください":"Ask admin to add destinations"}</p>`; return; }
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickDest(${i})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
     + (regDests.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regDests.map(esc).join("、")}</p>`:"");
 }
-function pickDest(i){ if(isViewOnly) return viewOnlyBlock(); const arr=suggest("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function pickDest(i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function drawTruck(){
   const area=document.getElementById("truckArea"); if(!area) return;
   const inp=document.getElementById("truck");
   const cur=inp?inp.value:"";
-  const arr=suggest("truck");
+  const arr=getMaster("truck");
+  if(!arr.length){ area.innerHTML=`<p class="hint">${lang==="ja"?"管理者マスタ変更でトラックを登録してください":"Ask admin to add trucks"}</p>`; return; }
   area.innerHTML = arr.map(v=>`<button class="chip" onclick="pickTruck(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${cur===v?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
 }
 function pickTruck(v){
@@ -894,6 +895,13 @@ function updateAnom(){
     else { b.disabled=false; b.style.background=a.length?"#f97316":"#2563eb"; b.style.opacity="1"; }
   }
 }
+async function ensureMasterValue(kind,v){
+  if(!v) return;
+  if(getMaster(kind).includes(v)) return;
+  const so=(masterRows[kind]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0)+1;
+  const {data,error}=await sb.from("master_items").insert({kind:kind,value:v,sort_order:so,color:""}).select();
+  if(!error&&data){ (masterRows[kind]=masterRows[kind]||[]).push({id:data[0].id,value:v,sort_order:so,color:""}); }
+}
 async function saveRecord(){
   if(isViewOnly) return viewOnlyBlock();
   const req=anomRequired();
@@ -910,6 +918,7 @@ async function saveRecord(){
   const plDc1=regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
   const plDc3=regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
   const wname=(user.email||"").split("@")[0]||t().you;
+  if(truck) await ensureMasterValue("truck",truck);
   try{
     const ins=await sb.from("load_records").insert({
       worker_name:wname, worker_id:user.id, destination:dest, truck:truck, pallets:pallets, comment:comment,
