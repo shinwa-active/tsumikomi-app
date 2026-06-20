@@ -147,6 +147,7 @@ let user = null;
 let records = [];
 let view = {name:"home"};
 let signedCache = {};
+let pendingCompleteId = null;
 const app = document.getElementById("app");
 function t(){ return T[lang]; }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -407,10 +408,20 @@ async function afterLogin(){
     .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster)
     .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol).subscribe();
 }
-async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; renderLogin(); }
+async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; pendingCompleteId=null; renderLogin(); }
 
 /* ===================== 画面描画 ===================== */
-function go(name,params){ view=Object.assign({name},params||{}); render(); window.scrollTo(0,0); }
+function go(name,params){
+  if(pendingCompleteId!=null && name!=="detail"){
+    const rec=records.find(x=>String(x.id)===String(pendingCompleteId));
+    if(rec && !rec.completed){
+      const msg=lang==="ja"?"まだ「積込完了」を押していません。\n\nこのまま移動しますか？":"You haven't pressed \"Mark as loaded\" yet.\n\nLeave anyway?";
+      if(!confirm(msg)) return;
+    }
+    pendingCompleteId=null;
+  }
+  view=Object.assign({name},params||{}); render(); window.scrollTo(0,0);
+}
 function topbar(){
   return `<div class="topbar">
     <span style="opacity:.7">${lang==="ja"?"あなたは":"You are"}</span>
@@ -755,22 +766,41 @@ function drawCourses(){
   }
   if(typeof updateAnom==="function") updateAnom();
 }
-function anomList(){
+function anomRequired(){
   const a=[];
+  const truckEl=document.getElementById("truck");
+  const destEl=document.getElementById("dest");
   if(!regOki)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing");
-  if(regPhotos.length===0)a.push(lang==="ja"?"写真がありません":"No photo");
-  if(!document.getElementById("truck").value.trim())a.push(lang==="ja"?"車番が未入力です":"Truck missing");
-  if(!document.getElementById("dest").value.trim())a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
+  if(!truckEl||!truckEl.value.trim())a.push(lang==="ja"?"車番が未入力です":"Truck missing");
+  if(!destEl||!destEl.value.trim())a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
   if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
   return a;
 }
+function anomList(){
+  const a=anomRequired();
+  if(regPhotos.length===0)a.push(lang==="ja"?"写真がありません":"No photo");
+  return a;
+}
 function updateAnom(){
-  const a=anomList(), el=document.getElementById("anom"); if(!el)return;
-  el.innerHTML = a.length? `<div class="panel" style="background:#fef2f2;border:2px solid #fecaca;color:#b91c1c;margin-top:14px"><b>⚠ ${t().check}</b><ul style="margin:6px 0 0;padding-left:20px">${a.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
-  const b=document.getElementById("saveBtn"); if(b) b.style.background=a.length?"#f97316":"#2563eb";
+  const req=anomRequired();
+  const a=req.slice();
+  if(regPhotos.length===0)a.push(lang==="ja"?"写真がありません":"No photo");
+  const el=document.getElementById("anom");
+  if(el) el.innerHTML = a.length? `<div class="panel" style="background:#fef2f2;border:2px solid #fecaca;color:#b91c1c;margin-top:14px"><b>⚠ ${t().check}</b><ul style="margin:6px 0 0;padding-left:20px">${a.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+  const b=document.getElementById("saveBtn"); if(b){
+    if(isViewOnly){ b.style.opacity=".4"; }
+    else if(req.length){ b.disabled=true; b.style.background="#cbd5e1"; b.style.opacity="1"; }
+    else { b.disabled=false; b.style.background=a.length?"#f97316":"#2563eb"; b.style.opacity="1"; }
+  }
 }
 async function saveRecord(){
   if(isViewOnly) return viewOnlyBlock();
+  const req=anomRequired();
+  if(req.length){
+    toast(lang==="ja"?"必須項目が未入力です":"Required fields missing");
+    updateAnom();
+    return;
+  }
   const a=anomList();
   if(a.length && !confirm((lang==="ja"?"不足があります：\n\n":"Missing:\n\n")+a.join("\n")+(lang==="ja"?"\n\nこのまま登録しますか？":"\n\nSave anyway?"))) return;
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
@@ -798,6 +828,7 @@ async function saveRecord(){
     await sb.from("notifications").insert({record_id:rec.id,message:`${dest||"-"} / ${truck||"-"} 登録`});
     toast(t().saved);
     await loadRecords();
+    pendingCompleteId=rec.id;
     go("detail",{id:rec.id});
   }catch(e){ alert((lang==="ja"?"登録できませんでした：":"Save failed: ")+(e.message||e)); btn.disabled=false; btn.textContent=t().save; }
 }
@@ -835,6 +866,7 @@ async function renderDetail(id){
 }
 async function markComplete(id){
   if(isViewOnly) return viewOnlyBlock();
+  if(String(pendingCompleteId)===String(id)) pendingCompleteId=null;
   await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id);
   const rec=records.find(x=>String(x.id)===String(id));
   const warns=[];
