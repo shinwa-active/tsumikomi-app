@@ -175,7 +175,7 @@ async function loadMaster(){
   (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order,color:r.color||""}); });
   masterRows=m;
   if(view.name==="master") renderMaster();
-  else if(view.name==="register" && document.getElementById("candArea")){ drawCandidates(); }
+  else if((view.name==="register"||view.name==="addmore") && document.getElementById("candArea")){ drawCandidates(); }
 }
 const COURSE_DC3_DEFAULT=["AH","AG","7P","7Q","7R","AA","2P","2N","BA","BB","BF","9A","9B","9C","9F","4P","4T","4E","4F","4R","5D","3P","3サ","3シ","3X","3C","3D","0A","0B","0C","0D","0G","1E","1B","1C"];
 const COURSE_DC1_DEFAULT=["4＋","4＆","3％","3－","3！","3＃","3＆","3＊","3：","3＋","3＄","4－","4＊","4／","4：","4％","4＞","4”","4！","4＃","4＄","PKD","PQD","PKT","AU0","QQY","セケ1","PQT","LD","チ＠","ナ＠","L","ト＠","ツ＠","ノS","ア＠","イ＠","ウ＠","エ＠","オ＠","カ＠","キ＠","ク＠","ケ＠","コ＠","サ＠","シ＠","ス＠","セ＠","ソ＠","タ＠","テ＠","ヌ＠","ネ＠","ノ＠","ハ＠","フ＠","ヒ＠","ヘ＠","マ＠","ラ＠","ホ＠","J＠","5E","5Q","5R","6B","6S","6T","8A","LK","2L","5F","5G","ウ＃","0V"];
@@ -412,7 +412,7 @@ async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; 
 
 /* ===================== 画面描画 ===================== */
 function go(name,params){
-  if(pendingCompleteId!=null && name!=="detail"){
+  if(pendingCompleteId!=null && name!=="detail" && name!=="addmore"){
     const rec=records.find(x=>String(x.id)===String(pendingCompleteId));
     if(rec && !rec.completed){
       const msg=lang==="ja"?"まだ「積込完了」を押していません。\n\nこのまま移動しますか？":"You haven't pressed \"Mark as loaded\" yet.\n\nLeave anyway?";
@@ -548,6 +548,7 @@ async function render(){
     document.getElementById("lst").innerHTML=await listHtml(records);
   }
   else if(view.name==="detail"){ renderDetail(view.id); return; }
+  else if(view.name==="addmore"){ renderAddMore(view.id); return; }
   else if(view.name==="dashboard"){ renderDashboard(); }
   else if(view.name==="search"){ renderSearch(); return; }
   else if(view.name==="history"){ renderHistory(); return; }
@@ -556,17 +557,22 @@ async function render(){
 }
 
 /* ---------- 登録 ---------- */
-let regPhotos=[], regCourses=[], regOki="";
+let regPhotos=[], regCourses=[], regOki=[], regDests=[];
 function renderRegister(){
-  regPhotos.length=0; regCourses.length=0; mix=null; regOki="";
+  regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
   const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
   app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
     <label>${t().fOki}</label>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
-    <label>${t().fDest}</label><input id="dest" placeholder="${t().phDest}">
-    <div id="sgDest"></div>
+    <label>${t().fDest}</label>
+    <div id="destChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+    <div id="sgDest" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="destInput" placeholder="${t().phDest}" style="flex:1">
+      <button class="btn small" style="padding:0 16px" onclick="addDest()">＋ ${t().add}</button>
+    </div>
     <label>${t().fTruck}</label><input id="truck" placeholder="${t().phTruck}">
     <div id="sgTruck"></div>
 
@@ -587,16 +593,77 @@ function renderRegister(){
     <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveRecord()">✔ ${t().save}</button>
   </div>`;
   document.getElementById("file").onchange=onFiles;
-  document.getElementById("dest").oninput=document.getElementById("truck").oninput=updateAnom;
-  drawOki(); drawSuggest(); drawCandidates(); drawCourses(); updateAnom();
+  document.getElementById("truck").oninput=updateAnom;
+  drawOki(); drawDestChips(); drawSuggest(); drawCandidates(); drawCourses(); updateAnom();
+}
+function renderAddMore(id){
+  const r=records.find(x=>String(x.id)===String(id));
+  if(!r){ go("home"); return; }
+  regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
+  const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
+  app.innerHTML=topbar()+header(lang==="ja"?"追加で登録":"Add more","go('detail',{id:'"+id+"'})")+`<div class="pad" style="padding-bottom:110px">
+    ${voNote}
+    <div class="panel" style="background:#eff6ff;border:none;color:#1e3a8a">
+      <b>${lang==="ja"?"このトラックに追加します":"Adding to this truck"}</b>
+      <div style="margin-top:6px;font-size:14px">${esc(r.truck||t().noTruck)} ／ ${esc(r.destination||t().noDest)}</div>
+      <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの積み地：":"Loaded so far: "}${esc(r.oki_chi||t().none)}</div>
+    </div>
+    <label>${t().fOki}</label>
+    <p class="hint">${lang==="ja"?"今回追加で積む場所を選んでください":"Choose the location for this additional load"}</p>
+    <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+
+    <label>${t().coursesLabel}</label>
+    <p class="hint">${t().qrHint}</p>
+    <div id="candArea" style="margin-top:10px"></div>
+    <div id="courseList"></div>
+    <div id="anom"></div>
+  </div>
+  <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
+    <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveAddMore('${id}')">✔ ${lang==="ja"?"追加を保存":"Save addition"}</button>
+  </div>`;
+  drawOki(); drawCandidates(); drawCourses(); updateAnomAddMore();
+}
+function updateAnomAddMore(){
+  const a=[]; if(!regOki.length)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing"); if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
+  const el=document.getElementById("anom");
+  if(el) el.innerHTML = a.length? `<div class="panel" style="background:#fef2f2;border:2px solid #fecaca;color:#b91c1c;margin-top:14px"><b>⚠ ${t().check}</b><ul style="margin:6px 0 0;padding-left:20px">${a.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
+  const b=document.getElementById("saveBtn"); if(b){
+    if(isViewOnly){ b.style.opacity=".4"; }
+    else if(a.length){ b.disabled=true; b.style.background="#cbd5e1"; b.style.opacity="1"; }
+    else { b.disabled=false; b.style.background="#2563eb"; b.style.opacity="1"; }
+  }
+}
+async function saveAddMore(id){
+  if(isViewOnly) return viewOnlyBlock();
+  if(!regOki.length || regCourses.length===0){ toast(lang==="ja"?"必須項目が未入力です":"Required fields missing"); updateAnomAddMore(); return; }
+  const r=records.find(x=>String(x.id)===String(id)); if(!r) return;
+  const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
+  const existingOki = r.oki_chi ? String(r.oki_chi).split("、").filter(Boolean) : [];
+  const mergedOki = [...new Set([...existingOki, ...regOki])];
+  const addPl = regCourses.reduce((s,c)=>s+(c.pl||0),0);
+  const addPlDc1 = regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
+  const addPlDc3 = regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
+  try{
+    await sb.from("courses").insert(regCourses.map(c=>({record_id:r.id,code:c.code,pl:c.pl,checked:false})));
+    await sb.from("load_records").update({
+      oki_chi: mergedOki.join("、"),
+      pallets: (r.pallets||0)+addPl,
+      pl_dc1: (r.pl_dc1||0)+addPlDc1,
+      pl_dc3: (r.pl_dc3||0)+addPlDc3
+    }).eq("id", r.id);
+    toast(lang==="ja"?"追加しました":"Added");
+    await loadRecords();
+    go("detail",{id:r.id});
+  }catch(e){ alert((lang==="ja"?"追加できませんでした：":"Failed to add: ")+(e.message||e)); btn.disabled=false; btn.textContent=lang==="ja"?"追加を保存":"Save addition"; }
 }
 function drawOki(){
   const area=document.getElementById("okiArea"); if(!area) return;
   const arr=getMaster("oki_chi");
   if(!arr.length){ area.innerHTML=`<p class="hint">${lang==="ja"?"管理者マスタ変更で積み地を登録してください":"Ask admin to add loading locations"}</p>`; return; }
-  area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickOki(${i})" style="${regOki===v?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
+  area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickOki(${i})" style="${regOki.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
+    + (regOki.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regOki.map(esc).join("、")}</p>`:"");
 }
-function pickOki(i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; regOki=(regOki===v?"":v); drawOki(); updateAnom(); }
+function pickOki(i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; const idx=regOki.indexOf(v); if(idx>=0) regOki.splice(idx,1); else regOki.push(v); drawOki(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
@@ -645,9 +712,26 @@ function mixRemove(idx){ if(isViewOnly) return viewOnlyBlock(); if(!mix) return;
 function mixConfirm(){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
 function drawSuggest(){
   const mk=(arr,inp)=>arr.map(v=>`<button class="chip" onclick="document.getElementById('${inp}').value=${JSON.stringify(v).replace(/"/g,'&quot;')};updateAnom()">${esc(v)}</button>`).join("");
-  document.getElementById("sgDest").innerHTML=mk(suggest("dest"),"dest");
+  document.getElementById("sgDest").innerHTML=suggest("dest").map(v=>`<button class="chip" onclick="toggleDestSuggest(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
   document.getElementById("sgTruck").innerHTML=mk(suggest("truck"),"truck");
 }
+function drawDestChips(){
+  const el=document.getElementById("destChips"); if(!el) return;
+  el.innerHTML = regDests.length? regDests.map((v,i)=>`<button class="chip" style="background:#2563eb;color:#fff" onclick="removeDest(${i})">${esc(v)} ×</button>`).join("") : `<span class="hint">${lang==="ja"?"未選択":"none"}</span>`;
+}
+function toggleDestSuggest(v){
+  if(isViewOnly) return viewOnlyBlock();
+  const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v);
+  drawDestChips(); drawSuggest(); updateAnom();
+}
+function addDest(){
+  if(isViewOnly) return viewOnlyBlock();
+  const inp=document.getElementById("destInput"); if(!inp) return;
+  const v=inp.value.trim(); if(!v) return;
+  if(!regDests.includes(v)) regDests.push(v);
+  inp.value=""; drawDestChips(); drawSuggest(); updateAnom();
+}
+function removeDest(i){ if(isViewOnly) return viewOnlyBlock(); regDests.splice(i,1); drawDestChips(); drawSuggest(); updateAnom(); }
 function onFiles(e){ if(isViewOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
 function drawPhotos(){
   const a=document.getElementById("photoArea");
@@ -773,15 +857,15 @@ function drawCourses(){
     if(regCourses.length) html+=`<div style="text-align:right;font-weight:bold;color:#475569;margin-top:8px">${t().totalPl(regCourses.reduce((s,c)=>s+c.pl,0))}</div>`;
     el.innerHTML=html;
   }
-  if(typeof updateAnom==="function") updateAnom();
+  if(view.name==="addmore"){ if(typeof updateAnomAddMore==="function") updateAnomAddMore(); }
+  else if(typeof updateAnom==="function") updateAnom();
 }
 function anomRequired(){
   const a=[];
   const truckEl=document.getElementById("truck");
-  const destEl=document.getElementById("dest");
-  if(!regOki)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing");
+  if(!regOki.length)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing");
   if(!truckEl||!truckEl.value.trim())a.push(lang==="ja"?"トラックが未入力です":"Truck missing");
-  if(!destEl||!destEl.value.trim())a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
+  if(!regDests.length)a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
   if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
   return a;
 }
@@ -813,7 +897,7 @@ async function saveRecord(){
   const a=anomList();
   if(a.length && !confirm((lang==="ja"?"不足があります：\n\n":"Missing:\n\n")+a.join("\n")+(lang==="ja"?"\n\nこのまま登録しますか？":"\n\nSave anyway?"))) return;
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
-  const dest=document.getElementById("dest").value.trim(), truck=document.getElementById("truck").value.trim();
+  const dest=regDests.join("、"), truck=document.getElementById("truck").value.trim();
   const pallets=regCourses.reduce((s,c)=>s+(c.pl||0),0), comment=document.getElementById("comment").value.trim();
   const plDc1=regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
   const plDc3=regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
@@ -821,7 +905,7 @@ async function saveRecord(){
   try{
     const ins=await sb.from("load_records").insert({
       worker_name:wname, worker_id:user.id, destination:dest, truck:truck, pallets:pallets, comment:comment,
-      oki_chi:regOki, pl_dc1:plDc1, pl_dc3:plDc3,
+      oki_chi:regOki.join("、"), pl_dc1:plDc1, pl_dc3:plDc3,
       photo_taken_at:new Date().toISOString(), device_info:navigator.userAgent.slice(0,120)
     }).select().single();
     if(ins.error) throw ins.error;
@@ -862,7 +946,10 @@ async function renderDetail(id){
         <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
   }
   let actions="";
-  if(!r.completed) actions+=`<button class="btn green" style="${isViewOnly?"opacity:.5":""}" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
+  if(!r.completed){
+    actions+=`<button class="btn green" style="${isViewOnly?"opacity:.5":""}" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
+    actions+=`<button class="btn ghost" style="${isViewOnly?"opacity:.5":""}" onclick="go('addmore',{id:'${r.id}'})">➕ ${lang==="ja"?"追加で登録":"Add more"}</button>`;
+  }
   if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
     <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
   let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
@@ -879,14 +966,15 @@ async function markComplete(id){
   await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id);
   const rec=records.find(x=>String(x.id)===String(id));
   const warns=[];
-  if(rec && rec.oki_chi){
+  const okiFirst = rec && rec.oki_chi ? String(rec.oki_chi).split("、")[0] : "";
+  if(rec && okiFirst){
     if((rec.pl_dc1||0)>0){
-      const row=pal.find(r=>r.label && r.label.indexOf(rec.oki_chi)===0 && r.label.indexOf("DC1")>=0);
-      if(row) await palAdjust(row.id,-rec.pl_dc1); else warns.push(rec.oki_chi+"→DC1");
+      const row=pal.find(r=>r.label && r.label.indexOf(okiFirst)===0 && r.label.indexOf("DC1")>=0);
+      if(row) await palAdjust(row.id,-rec.pl_dc1); else warns.push(okiFirst+"→DC1");
     }
     if((rec.pl_dc3||0)>0){
-      const row=pal.find(r=>r.label && r.label.indexOf(rec.oki_chi)===0 && r.label.indexOf("DC3")>=0);
-      if(row) await palAdjust(row.id,-rec.pl_dc3); else warns.push(rec.oki_chi+"→DC3");
+      const row=pal.find(r=>r.label && r.label.indexOf(okiFirst)===0 && r.label.indexOf("DC3")>=0);
+      if(row) await palAdjust(row.id,-rec.pl_dc3); else warns.push(okiFirst+"→DC3");
     }
   }
   toast(lang==="ja"?"積込完了にしました":"Marked loaded");
@@ -1169,7 +1257,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,addDest,removeDest,toggleDestSuggest,saveAddMore});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
