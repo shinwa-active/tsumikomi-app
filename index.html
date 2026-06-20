@@ -91,12 +91,12 @@ const T = {
    homeTitle:"横持ち記録",today:"本日の横持ち",ken:"件",capture:"横持ち開始",viewList:"横持ちした一覧を見る",
    offlineNote:"電波が切れても、つながり次第まとめて送られます。",
    regTitle:"横持ちを登録",photos:"写真（1〜3枚）",take:"写真を撮る（積み込み後　荷姿）",
-   fDest:"納品先",fTruck:"車番",fOki:"積み地",fPallets:"パレット数",fComment:"コメント（任意）",
+   fDest:"納品先",fTruck:"トラック",fOki:"積み地",fPallets:"パレット数",fComment:"コメント（任意）",
    phDest:"",phTruck:"",phPallets:"",phComment:"",
    coursesLabel:"コース看板",qrScan:"QR",qrHint:"候補からTapして選ぶ、候補に無い時は手入力します。",
-   phCode:"",add:"追加",totalPl:n=>`合計 ${n} PL`,
+   phCode:"手入力",add:"追加",totalPl:n=>`合計 ${n} PL`,
    check:"確認してください",save:"登録する",saving:"登録中…",saved:"登録しました。全員に共有されます",
-   listTitle:"登録一覧",done:"完了",pending:"未完了",reqcheck:"要確認",destShort:"納品先✓",noTruck:"車番なし",noDest:"（納品先なし）",
+   listTitle:"登録一覧",done:"完了",pending:"未完了",reqcheck:"要確認",destShort:"納品先✓",noTruck:"トラックなし",noDest:"（納品先なし）",
    by:(w,p)=>`担当 ${w}・${p}パレット`,
    detailTitle:"横持ちの明細",loadedAt:t=>`積込完了 ${t}`,recvAt:t=>`納品先完了 ${t}`,
    iWorker:"担当者",iPhoto:"撮影/登録",iComment:"コメント",none:"（なし）",pl:n=>`${n} パレット`,
@@ -105,8 +105,8 @@ const T = {
    edit:"直す",del:"消す",delQ:"この記録を消しますか？（管理者のみ）",
    dashTitle:"ダッシュボード",sToday:"本日の積込",sPending:"未完了",sRecv:"納品先未完了",sWorkers:"担当者数",byWorker:"担当者別（本日）",
    searchTitle:"検索",fDate:"日付",all:"すべて",results:n=>`${n} 件`,csv:"CSVで出す",csvDone:"CSVを書き出しました",
-   histTitle:"履歴",byTruck:"車番別",byDest:"納品先別",choose:"選んでください",back:"選びなおす",loadings:n=>`${n} 件`,
-   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"車番",mOki:"積み地",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・車番が、撮影画面の候補に出ます（この端末に保存）。",mOkiNote:"ここの積み地が、横持ち登録画面の候補に出ます。",
+   histTitle:"履歴",byTruck:"トラック別",byDest:"納品先別",choose:"選んでください",back:"選びなおす",loadings:n=>`${n} 件`,
+   masterTitle:"マスタ変更",mDest:"納品先",mTruck:"トラック",mOki:"積み地",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・トラックが、横持ち登録画面の候補に出ます（この端末に保存）。",mOkiNote:"ここの積み地が、横持ち登録画面の候補に出ます。",
    candTitle3:"DC3行き",candTitle1:"DC1行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
    tHome:"ホーム",tList:"一覧",tDash:"集計",tSearch:"検索",tHist:"履歴",tMaster:"マスタ",settings:"設定",language:"言語",
    loginTitle:"横持ち管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
@@ -118,7 +118,7 @@ const T = {
    fDest:"Destination",fTruck:"Truck number",fOki:"Loading location",fPallets:"Pallets",fComment:"Comment (optional)",
    phDest:"",phTruck:"",phPallets:"",phComment:"",
    coursesLabel:"Course signs",qrScan:"QR",qrHint:"Tap a candidate to add; type manually if missing or mixed.",
-   phCode:"",add:"Add",totalPl:n=>`Total ${n} PL`,
+   phCode:"Manual entry",add:"Add",totalPl:n=>`Total ${n} PL`,
    check:"Please check",save:"Save record",saving:"Saving…",saved:"Saved. Shared with everyone.",
    listTitle:"All records",done:"Done",pending:"Pending",reqcheck:"Check",destShort:"Received",noTruck:"No truck",noDest:"(No destination)",
    by:(w,p)=>`By ${w} · ${p} pallets`,
@@ -330,7 +330,7 @@ function renderPallet(){
   app.innerHTML=topbar()+header(lang==="ja"?"パレット残数":"Pallets left","go('home')")+`<div class="pad">
     <div class="panel" style="background:#f0fdfa;border:none;color:#115e59;text-align:center"><div style="font-size:13px">${lang==="ja"?"残り合計":"Total left"}</div><div style="font-size:30px;font-weight:800">${total}<span style="font-size:15px"> PL</span></div></div>
     ${pal.map(rowHtml).join("")}
-    <p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のため、数の変更はできません。":"View only: cannot change values."):(lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。全ドライバーで共有され、翌日は自動でゼロに戻ります。":"Adjust with +/-; time auto-records. Shared with all; resets next day.")}</p>
+    <p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のため、数の変更はできません。":"View only: cannot change values."):(lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。翌日は自動でゼロに戻ります。<br>リアルタイムで全体共有されます。":"Adjust with +/-; time auto-records. Resets next day.<br>Shared in real time with everyone.")}</p>
   </div>`+tabbar();
 }
 function renderVolume(){
@@ -619,9 +619,10 @@ function drawCandidates(){
       ${arr.map((v,i)=>{const col=colorOf(key,v);return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;}).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
-        <input id="cPl_${key}" inputmode="numeric" placeholder="PL" style="width:56px;text-align:center">
-        <button class="btn small" style="padding:0 14px" onclick="addCourseG('${key}')">＋</button>
+        ${inMix?"":`<input id="cPl_${key}" inputmode="numeric" placeholder="PL" style="width:56px;text-align:center">`}
+        <button class="btn small" style="padding:0 14px;${inMix?"background:#7c3aed;color:#fff":""}" onclick="addCourseG('${key}')">＋</button>
       </div>
+      ${inMix?`<p class="hint" style="margin-top:4px">${lang==="ja"?"手入力した内容も、上の混載リストに追加されます。":"Manual entries are also added to the mix list above."}</p>`:""}
       <div id="csel_${key}"></div></div>`;
   };
   const _listScroll={};
@@ -746,7 +747,15 @@ function closeQr(){
   if(typeof drawCourses==="function") drawCourses();
 }
 function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); }
-function addCourseG(key){ if(isViewOnly) return viewOnlyBlock(); const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return; const c=ci.value.trim(); if(!c) return; const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses(); }
+function addCourseG(key){
+  if(isViewOnly) return viewOnlyBlock();
+  const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
+  const c=ci.value.trim(); if(!c) return;
+  if(mix && mix.key===key){
+    mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return;
+  }
+  const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses();
+}
 function courseRow(c,i){
   return `<div style="flex:0 0 calc(50% - 4px);min-width:0;box-sizing:border-box;display:flex;align-items:center;gap:6px;background:#f8fafc;border-radius:10px;padding:7px 10px"><b style="word-break:break-all;font-size:14px">${esc(c.code)}</b>${c.mixed?`<span style="background:#ede9fe;color:#6d28d9;border-radius:6px;padding:1px 6px;font-size:10px;font-weight:bold;white-space:nowrap">${lang==="ja"?"混載":"mix"}</span>`:""}<span style="color:#64748b;font-size:13px;white-space:nowrap">${c.pl} PL</span><button onclick="regCourses.splice(${i},1);drawCourses()" style="margin-left:auto;background:none;border:none;color:#f87171;font-size:18px;line-height:1">×</button></div>`;
 }
@@ -771,7 +780,7 @@ function anomRequired(){
   const truckEl=document.getElementById("truck");
   const destEl=document.getElementById("dest");
   if(!regOki)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing");
-  if(!truckEl||!truckEl.value.trim())a.push(lang==="ja"?"車番が未入力です":"Truck missing");
+  if(!truckEl||!truckEl.value.trim())a.push(lang==="ja"?"トラックが未入力です":"Truck missing");
   if(!destEl||!destEl.value.trim())a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
   if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
   return a;
@@ -928,7 +937,7 @@ function renderSearch(){
 }
 function exportCsv(){
   const res=window._searchRes||[];
-  const head=["日時/Date","車番/Truck","納品先/Destination","担当者/Worker","パレット数/Pallets","積込完了/Loaded","納品先完了/Received"];
+  const head=["日時/Date","トラック/Truck","納品先/Destination","担当者/Worker","パレット数/Pallets","積込完了/Loaded","納品先完了/Received"];
   const rows=res.map(r=>[dayLabel(r.created_at)+" "+hhmm(r.created_at),r.truck||"",r.destination||"",r.worker_name||"",r.pallets||0,r.completed_at?hhmm(r.completed_at):"",r.dest_confirmed_at?hhmm(r.dest_confirmed_at):""]);
   const body=[head,...rows].map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob=new Blob(["\uFEFF"+body],{type:"text/csv"}); const u=URL.createObjectURL(blob);
@@ -1132,7 +1141,7 @@ async function masterDel(i){ if(!confirm(t().mDelQ))return; const row=(masterRow
   masterRows[mf.mode].splice(i,1); renderMaster();
 }
 async function masterUpload(){
-  if(!confirm(lang==="ja"?"この端末のマスタ（車番・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
+  if(!confirm(lang==="ja"?"この端末のマスタ（トラック・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
   const kinds=["truck","dest","course_dc1","course_dc3","oki_chi"]; let added=0;
   for(const k of kinds){
     let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+k)||"[]"); }catch(e){}
