@@ -175,7 +175,9 @@ async function loadMaster(){
   (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order,color:r.color||""}); });
   masterRows=m;
   if(view.name==="master") renderMaster();
-  else if((view.name==="register"||view.name==="addmore") && document.getElementById("candArea")){ drawCandidates(); }
+  else if((view.name==="register"||view.name==="addmore") && document.getElementById("candArea")){
+    drawOki(); if(document.getElementById("destArea")) drawDest(); if(document.getElementById("truckArea")) drawTruck(); drawCandidates();
+  }
 }
 const COURSE_DC3_DEFAULT=["AH","AG","7P","7Q","7R","AA","2P","2N","BA","BB","BF","9A","9B","9C","9F","4P","4T","4E","4F","4R","5D","3P","3サ","3シ","3X","3C","3D","0A","0B","0C","0D","0G","1E","1B","1C"];
 const COURSE_DC1_DEFAULT=["4＋","4＆","3％","3－","3！","3＃","3＆","3＊","3：","3＋","3＄","4－","4＊","4／","4：","4％","4＞","4”","4！","4＃","4＄","PKD","PQD","PKT","AU0","QQY","セケ1","PQT","LD","チ＠","ナ＠","L","ト＠","ツ＠","ノS","ア＠","イ＠","ウ＠","エ＠","オ＠","カ＠","キ＠","ク＠","ケ＠","コ＠","サ＠","シ＠","ス＠","セ＠","ソ＠","タ＠","テ＠","ヌ＠","ネ＠","ノ＠","ハ＠","フ＠","ヒ＠","ヘ＠","マ＠","ラ＠","ホ＠","J＠","5E","5Q","5R","6B","6S","6T","8A","LK","2L","5F","5G","ウ＃","0V"];
@@ -567,14 +569,13 @@ function renderRegister(){
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
     <label>${t().fDest}</label>
-    <div id="destChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-    <div id="sgDest" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <input id="destInput" placeholder="${t().phDest}" style="flex:1">
-      <button class="btn small" style="padding:0 16px" onclick="addDest()">＋ ${t().add}</button>
-    </div>
-    <label>${t().fTruck}</label><input id="truck" placeholder="${t().phTruck}">
-    <div id="sgTruck"></div>
+    <p class="hint">${lang==="ja"?"候補からTapして選ぶ（複数選択可）":"Tap candidates to select (multiple OK)"}</p>
+    <div id="destArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+
+    <label>${t().fTruck}</label>
+    <p class="hint">${t().qrHint}</p>
+    <div id="truckArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <input id="truck" placeholder="${t().phTruck}" style="margin-top:8px">
 
     <label>${t().coursesLabel}</label>
     <p class="hint">${t().qrHint}</p>
@@ -593,8 +594,8 @@ function renderRegister(){
     <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveRecord()">✔ ${t().save}</button>
   </div>`;
   document.getElementById("file").onchange=onFiles;
-  document.getElementById("truck").oninput=updateAnom;
-  drawOki(); drawDestChips(); drawSuggest(); drawCandidates(); drawCourses(); updateAnom();
+  document.getElementById("truck").oninput=()=>{ drawTruck(); updateAnom(); };
+  drawOki(); drawDest(); drawTruck(); drawCandidates(); drawCourses(); updateAnom();
 }
 function renderAddMore(id){
   const r=records.find(x=>String(x.id)===String(id));
@@ -615,12 +616,7 @@ function renderAddMore(id){
 
     <label>${t().fDest}</label>
     <p class="hint">${lang==="ja"?"納品先が追加で増える場合だけ選んでください（変わらない場合は空のままでOK）":"Only choose if there's an additional destination (leave empty if unchanged)"}</p>
-    <div id="destChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
-    <div id="sgDest" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <input id="destInput" placeholder="${t().phDest}" style="flex:1">
-      <button class="btn small" style="padding:0 16px" onclick="addDest()">＋ ${t().add}</button>
-    </div>
+    <div id="destArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
     <label>${t().coursesLabel}</label>
     <p class="hint">${t().qrHint}</p>
@@ -631,7 +627,7 @@ function renderAddMore(id){
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
     <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveAddMore('${id}')">✔ ${lang==="ja"?"追加を保存":"Save addition"}</button>
   </div>`;
-  drawOki(); drawDestChips(); drawSuggest(); drawCandidates(); drawCourses(); updateAnomAddMore();
+  drawOki(); drawDest(); drawCandidates(); drawCourses(); updateAnomAddMore();
 }
 function updateAnomAddMore(){
   const a=[]; if(!regOki.length)a.push(lang==="ja"?"積み地が未選択です":"Loading location missing"); if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
@@ -723,30 +719,27 @@ function mixToggle(key){ if(isViewOnly) return viewOnlyBlock(); mix=(mix&&mix.ke
 function mixPick(key,i){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
 function mixRemove(idx){ if(isViewOnly) return viewOnlyBlock(); if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
 function mixConfirm(){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
-function drawSuggest(){
-  const mk=(arr,inp)=>arr.map(v=>`<button class="chip" onclick="document.getElementById('${inp}').value=${JSON.stringify(v).replace(/"/g,'&quot;')};updateAnom()">${esc(v)}</button>`).join("");
-  const sgDestEl=document.getElementById("sgDest");
-  if(sgDestEl) sgDestEl.innerHTML=suggest("dest").map(v=>`<button class="chip" onclick="toggleDestSuggest(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
-  const sgTruckEl=document.getElementById("sgTruck");
-  if(sgTruckEl) sgTruckEl.innerHTML=mk(suggest("truck"),"truck");
+function drawDest(){
+  const area=document.getElementById("destArea"); if(!area) return;
+  const arr=suggest("dest");
+  if(!arr.length){ area.innerHTML=`<p class="hint">${lang==="ja"?"管理者マスタ変更で納品先を登録してください":"Ask admin to add destinations"}</p>`; return; }
+  area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickDest(${i})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
+    + (regDests.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regDests.map(esc).join("、")}</p>`:"");
 }
-function drawDestChips(){
-  const el=document.getElementById("destChips"); if(!el) return;
-  el.innerHTML = regDests.length? regDests.map((v,i)=>`<button class="chip" style="background:#2563eb;color:#fff" onclick="removeDest(${i})">${esc(v)} ×</button>`).join("") : `<span class="hint">${lang==="ja"?"未選択":"none"}</span>`;
+function pickDest(i){ if(isViewOnly) return viewOnlyBlock(); const arr=suggest("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function drawTruck(){
+  const area=document.getElementById("truckArea"); if(!area) return;
+  const inp=document.getElementById("truck");
+  const cur=inp?inp.value:"";
+  const arr=suggest("truck");
+  area.innerHTML = arr.map(v=>`<button class="chip" onclick="pickTruck(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${cur===v?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
 }
-function toggleDestSuggest(v){
+function pickTruck(v){
   if(isViewOnly) return viewOnlyBlock();
-  const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v);
-  drawDestChips(); drawSuggest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
+  const inp=document.getElementById("truck"); if(!inp) return;
+  inp.value = (inp.value===v) ? "" : v;
+  drawTruck(); updateAnom();
 }
-function addDest(){
-  if(isViewOnly) return viewOnlyBlock();
-  const inp=document.getElementById("destInput"); if(!inp) return;
-  const v=inp.value.trim(); if(!v) return;
-  if(!regDests.includes(v)) regDests.push(v);
-  inp.value=""; drawDestChips(); drawSuggest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
-}
-function removeDest(i){ if(isViewOnly) return viewOnlyBlock(); regDests.splice(i,1); drawDestChips(); drawSuggest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function onFiles(e){ if(isViewOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
 function drawPhotos(){
   const a=document.getElementById("photoArea");
@@ -1272,7 +1265,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,addDest,removeDest,toggleDestSuggest,saveAddMore});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
