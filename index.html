@@ -143,8 +143,10 @@ let role = "worker";
 let adminAuthed = false;
 let isViewOnly = false;
 let isDestOnly = false;
+let isAdminAllowed = false;
 const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
 const DEST_ONLY_EMAILS = ["u123456@shinwa-active.co.jp"];
+const ADMIN_EMAILS = ["y.katou@shinwa-active.co.jp","u100422@shinwa-active.co.jp","u104853@shinwa-active.co.jp"];
 let user = null;
 let records = [];
 let view = {name:"home"};
@@ -483,6 +485,7 @@ async function doLogin(){
 async function afterLogin(){
   isViewOnly = !!(user && user.email && VIEW_ONLY_EMAILS.includes(user.email.toLowerCase()));
   isDestOnly = !!(user && user.email && DEST_ONLY_EMAILS.includes(user.email.toLowerCase()));
+  isAdminAllowed = !!(user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
   await loadRecords();
   await loadYoko();
   await loadPal();
@@ -495,7 +498,7 @@ async function afterLogin(){
     .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster)
     .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol).subscribe();
 }
-async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; pendingCompleteId=null; renderLogin(); }
+async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; isAdminAllowed=false; pendingCompleteId=null; renderLogin(); }
 
 /* ===================== 画面描画 ===================== */
 function go(name,params){
@@ -513,7 +516,7 @@ function topbar(){
   return `<div class="topbar">
     <span style="opacity:.7">${lang==="ja"?"あなたは":"You are"}</span>
     <button class="pill ${role==="worker"?"on":""}" onclick="enterWorker()">${t().worker}</button>
-    <button class="pill ${role==="admin"?"on":""}" onclick="enterAdmin()">${t().manager}</button>
+    <button class="pill ${role==="admin"?"on":""}" style="${isAdminAllowed?"":"opacity:.35"}" onclick="${isAdminAllowed?"enterAdmin()":""}">${t().manager}</button>
     <button class="pill" style="margin-left:auto" onclick="go('settings')">⚙ ${lang==="ja"?"日本語":"EN"}</button>
   </div>`;
 }
@@ -528,7 +531,10 @@ function tabbar(){
   return `<div class="tabbar">${tabs.map(([k,ic,l])=>`<button class="tab ${view.name===k?"on":""}" onclick="go('${k}')"><span class="ic">${ic}</span>${l}</button>`).join("")}</div>`;
 }
 function enterWorker(){ role="worker"; adminAuthed=false; go("home"); }
-function enterAdmin(){ if(adminAuthed){role="admin";go("dashboard");} else { const p=prompt(lang==="ja"?"管理者パスワード":"Manager password"); if(p!=null && _ck(p)===ADMIN_HASH){adminAuthed=true;role="admin";go("dashboard");} else if(p!=null){ toast(lang==="ja"?"パスワードが違います":"Wrong password"); } } }
+function enterAdmin(){
+  if(!isAdminAllowed){ toast(lang==="ja"?"このアカウントは管理者画面に入れません":"This account cannot access the admin screen"); return; }
+  role="admin"; go("dashboard");
+}
 
 function badges(r){
   let h="";
