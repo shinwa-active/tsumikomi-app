@@ -278,10 +278,48 @@ async function palAdjust(id,delta){
   await loadPal();
 }
 
+/* ---- コース記号の表記ゆれ統一 ---- */
+const HKANA_MAP={
+  "ｱ":"ア","ｲ":"イ","ｳ":"ウ","ｴ":"エ","ｵ":"オ","ｶ":"カ","ｷ":"キ","ｸ":"ク","ｹ":"ケ","ｺ":"コ",
+  "ｻ":"サ","ｼ":"シ","ｽ":"ス","ｾ":"セ","ｿ":"ソ","ﾀ":"タ","ﾁ":"チ","ﾂ":"ツ","ﾃ":"テ","ﾄ":"ト",
+  "ﾅ":"ナ","ﾆ":"ニ","ﾇ":"ヌ","ﾈ":"ネ","ﾉ":"ノ","ﾊ":"ハ","ﾋ":"ヒ","ﾌ":"フ","ﾍ":"ヘ","ﾎ":"ホ",
+  "ﾏ":"マ","ﾐ":"ミ","ﾑ":"ム","ﾒ":"メ","ﾓ":"モ","ﾔ":"ヤ","ﾕ":"ユ","ﾖ":"ヨ",
+  "ﾗ":"ラ","ﾘ":"リ","ﾙ":"ル","ﾚ":"レ","ﾛ":"ロ","ﾜ":"ワ","ｦ":"ヲ","ﾝ":"ン",
+  "ｧ":"ァ","ｨ":"ィ","ｩ":"ゥ","ｪ":"ェ","ｫ":"ォ","ｬ":"ャ","ｭ":"ュ","ｮ":"ョ","ｯ":"ッ",
+  "ｰ":"ー","｡":"。","､":"、","｢":"「","｣":"」","ﾞ":"゛","ﾟ":"゜"
+};
+const HKANA_DAKUTEN={
+  "ｶﾞ":"ガ","ｷﾞ":"ギ","ｸﾞ":"グ","ｹﾞ":"ゲ","ｺﾞ":"ゴ",
+  "ｻﾞ":"ザ","ｼﾞ":"ジ","ｽﾞ":"ズ","ｾﾞ":"ゼ","ｿﾞ":"ゾ",
+  "ﾀﾞ":"ダ","ﾁﾞ":"ヂ","ﾂﾞ":"ヅ","ﾃﾞ":"デ","ﾄﾞ":"ド",
+  "ﾊﾞ":"バ","ﾋﾞ":"ビ","ﾌﾞ":"ブ","ﾍﾞ":"ベ","ﾎﾞ":"ボ",
+  "ﾊﾟ":"パ","ﾋﾟ":"ピ","ﾌﾟ":"プ","ﾍﾟ":"ペ","ﾎﾟ":"ポ"
+};
+const SYM_HALF_TO_FULL={
+  "+":"＋","&":"＆","%":"％","-":"－","!":"！","#":"＃","*":"＊",":":"：","/":"／",">":"＞",
+  "\"":"”","$":"＄","@":"＠","<":"＜","=":"＝","(":"（",")":"）","~":"～","^":"＾","_":"＿",
+  ".":"．",",":"，",";":"；","'":"’","`":"｀","[":"［","]":"］","{":"｛","}":"｝","|":"｜","?":"？"
+};
+function normalizeCourseCode(s){
+  let v=String(s||"").trim();
+  if(!v) return v;
+  // 半角カナ濁点・半濁点を先に処理
+  Object.keys(HKANA_DAKUTEN).forEach(k=>{ v=v.split(k).join(HKANA_DAKUTEN[k]); });
+  // 半角カナ→全角カナ
+  v=v.split("").map(ch=>HKANA_MAP[ch]||ch).join("");
+  // 全角英数字→半角
+  v=v.replace(/[Ａ-Ｚａ-ｚ０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0));
+  // 半角記号→全角記号（マスタの表記に合わせる）
+  v=v.split("").map(ch=>SYM_HALF_TO_FULL[ch]||ch).join("");
+  // 英字は大文字に統一
+  v=v.toUpperCase();
+  return v;
+}
+
 /* ---- 今日の直積みに変更コース ---- */
 let directLoadCourses=[]; // [{id, code, added_date}]
 function todayDirectLoadCourses(){ return directLoadCourses.filter(r=>r.added_date===todayStr()); }
-function isDirectLoadCode(code){ return todayDirectLoadCourses().some(r=>r.code===code); }
+function isDirectLoadCode(code){ return todayDirectLoadCourses().some(r=>r.code===normalizeCourseCode(code)); }
 async function loadDirectLoad(){
   const {data,error}=await sb.from("direct_load_courses").select("*").order("added_at",{ascending:true});
   if(error){ console.error(error); return; }
@@ -291,7 +329,8 @@ async function loadDirectLoad(){
 async function addDirectLoadCourse(){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const el=document.getElementById("dlcInput"); if(!el) return;
-  const v=el.value.trim(); if(!v) return;
+  const raw=el.value.trim(); if(!raw) return;
+  const v=normalizeCourseCode(raw);
   if(isDirectLoadCode(v)){ el.value=""; return; }
   const {error}=await sb.from("direct_load_courses").insert({code:v,added_date:todayStr()});
   if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
@@ -366,13 +405,17 @@ async function volSave(){
 function renderDirectLoad(){
   const today=todayDirectLoadCourses();
   const voNote=(isViewOnly||isDestOnly)?"opacity:.5;pointer-events:none":"";
-  const chips=today.length? today.map(r=>`<button class="chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="delDirectLoadCourse(${r.id})">${esc(r.code)} ×</button>`).join("") : `<span class="hint">${lang==="ja"?"今日はまだありません":"None yet today"}</span>`;
-  return `<div class="panel" style="margin-top:10px;background:#fff7ed;border:2px solid #fdba74">
-    <b style="color:#9a3412">⚠ ${lang==="ja"?"今日の 直積みに変更コース":"Today: changed to direct loading"}</b>
-    <p class="hint" style="margin-top:2px">${lang==="ja"?"ここに入れたコースは、横持ち登録画面で選べなくなります（今日だけ）。":"Courses entered here cannot be selected on the registration screen (today only)."}</p>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chips}</div>
-    <div style="display:flex;gap:8px;margin-top:8px;${voNote}">
-      <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
+  const hasItems=today.length>0;
+  const chips=hasItems? today.map(r=>`<button class="chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="delDirectLoadCourse(${r.id})">${esc(r.code)} ×</button>`).join("") : "";
+  return `<div class="panel" style="margin-top:8px;padding:${hasItems?"14px":"8px 14px"};background:#fff7ed;border:2px solid #fdba74">
+    <div style="display:flex;align-items:center;gap:6px">
+      <b style="color:#9a3412;font-size:${hasItems?"15px":"13px"}">⚠ ${lang==="ja"?"今日の 直積みに変更コース":"Today: changed to direct loading"}</b>
+      ${hasItems?"":`<span class="hint" style="margin-left:auto">${lang==="ja"?"なし":"None"}</span>`}
+    </div>
+    ${hasItems?`<p class="hint" style="margin-top:2px">${lang==="ja"?"ここに入れたコースは、横持ち登録画面で選べなくなります（今日だけ）。":"Courses entered here cannot be selected on the registration screen (today only)."}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chips}</div>`:""}
+    <div style="display:flex;gap:8px;margin-top:${hasItems?"8px":"6px"};${voNote}">
+      <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1;${hasItems?"":"padding:10px"}" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
       <button class="btn small" style="padding:0 16px;background:#ea580c" onclick="addDirectLoadCourse()">＋ ${t().add}</button>
     </div>
   </div>`;
@@ -644,13 +687,13 @@ async function render(){
         <div class="home-left">
           <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
           ${renderDirectLoad()}
-          <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
+          <div style="display:flex;gap:8px;margin-top:8px;align-items:stretch">
             <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a;text-align:center;display:flex;flex-direction:column;justify-content:center"><div style="font-size:13px">${t().today}</div><div style="font-size:24px;font-weight:800">${todays.length}<span style="font-size:14px"> ${t().ken}</span></div></div>
             <button class="btn ghost" style="flex:1;margin:0;line-height:1.4" onclick="go('list')">📋 ${lang==="ja"?"横持ち済み<br>一覧を見る":"View all<br>records"}</button>
           </div>
-          <button class="btn teal" style="margin-top:10px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
-          <button class="btn" style="margin-top:10px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>
-          <button class="btn ghost small" style="margin:16px auto 0;width:auto" onclick="logout()">${t().logout}</button>
+          <button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
+          <button class="btn" style="margin-top:8px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>
+          <button class="btn ghost small" style="margin:12px auto 0;width:auto" onclick="logout()">${t().logout}</button>
         </div>
         <div class="home-right">
           ${board}
