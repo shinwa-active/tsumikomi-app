@@ -146,7 +146,7 @@ let isDestOnly = false;
 let isAdminAllowed = false;
 const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
 const DEST_ONLY_EMAILS = ["u123456@shinwa-active.co.jp"];
-const ADMIN_EMAILS = ["y.katou@shinwa-active.co.jp","u100422@shinwa-active.co.jp","u104853@shinwa-active.co.jp"];
+const ADMIN_EMAILS = ["y.katou@shinwa-active.co.jp","u100422@shinwa-active.co.jp"];
 let user = null;
 let records = [];
 let view = {name:"home"};
@@ -278,24 +278,40 @@ async function palAdjust(id,delta){
   await loadPal();
 }
 
+/* ---- 今日の直積みに変更コース ---- */
+let directLoadCourses=[]; // [{id, code, added_date}]
+function todayDirectLoadCourses(){ return directLoadCourses.filter(r=>r.added_date===todayStr()); }
+function isDirectLoadCode(code){ return todayDirectLoadCourses().some(r=>r.code===code); }
+async function loadDirectLoad(){
+  const {data,error}=await sb.from("direct_load_courses").select("*").order("added_at",{ascending:true});
+  if(error){ console.error(error); return; }
+  directLoadCourses=data||[];
+  if(view.name==="home"||view.name==="register"||view.name==="addmore") render();
+}
+async function addDirectLoadCourse(){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  const el=document.getElementById("dlcInput"); if(!el) return;
+  const v=el.value.trim(); if(!v) return;
+  if(isDirectLoadCode(v)){ el.value=""; return; }
+  const {error}=await sb.from("direct_load_courses").insert({code:v,added_date:todayStr()});
+  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  el.value="";
+  await loadDirectLoad();
+}
+async function delDirectLoadCourse(id){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  const {error}=await sb.from("direct_load_courses").delete().eq("id",id);
+  if(error){ toast(lang==="ja"?"削除に失敗しました":"Delete failed"); return; }
+  await loadDirectLoad();
+}
+
 /* ---- 物量管理 ---- */
 let vol=[];
-let volShift=[]; // [{id, volume_id, shift_date, headcount}]
 function volTodayVal(r){ return r.updated_date===todayStr() ? r.today_value : null; }
 function volTodayOk(r){ return r.updated_date===todayStr() ? !!r.today_ok : false; }
-function volTodayAbsent(r){ return r.today_absent_date===todayStr() ? (r.today_absent||0) : 0; }
-function volTodayPlanned(r){
-  const row=volShift.find(s=>s.volume_id===r.id && s.shift_date===todayStr());
-  return row ? row.headcount : null;
-}
-function volTodayActual(r){
-  const planned=volTodayPlanned(r);
-  if(planned==null) return null;
-  const actual=planned-volTodayAbsent(r);
-  return actual<0?0:actual;
-}
+function volTodayAttend(r){ return r.today_absent_date===todayStr() ? (r.today_absent||null) : null; }
 function volCapacity(r){
-  const actual=volTodayActual(r);
+  const actual=volTodayAttend(r);
   if(actual==null || r.productivity==null || r.work_hours==null) return null;
   return Math.round(r.productivity*r.work_hours*actual);
 }
@@ -327,8 +343,6 @@ async function loadVol(){
   const {data,error}=await sb.from("volume_shipment").select("*").order("sort_order",{ascending:true});
   if(error){ console.error(error); return; }
   vol=data||[];
-  const {data:sdata,error:serror}=await sb.from("volume_shift").select("*");
-  if(!serror) volShift=sdata||[];
   if(view.name==="volume"||view.name==="home") render();
 }
 async function volSave(){
@@ -336,18 +350,34 @@ async function volSave(){
   const rows=vol.map(r=>{
     const inp=document.getElementById("vv_"+r.id);
     const chk=document.getElementById("vc_"+r.id);
-    const ab=document.getElementById("va_"+r.id);
+    const at=document.getElementById("va_"+r.id);
     const val=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
-    const absent=ab&&ab.value.trim()!==""?parseInt(ab.value):0;
-    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false, today_absent:absent};
+    const attend=at&&at.value.trim()!==""?parseInt(at.value):null;
+    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false, today_attend:attend};
   });
   for(const row of rows){
-    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_absent:row.today_absent,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
+    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_absent:row.today_attend,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
   }
   toast(lang==="ja"?"物量を保存しました":"Saved");
   await loadVol();
   go("home");
 }
+
+function renderDirectLoad(){
+  const today=todayDirectLoadCourses();
+  const voNote=(isViewOnly||isDestOnly)?"opacity:.5;pointer-events:none":"";
+  const chips=today.length? today.map(r=>`<button class="chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="delDirectLoadCourse(${r.id})">${esc(r.code)} ×</button>`).join("") : `<span class="hint">${lang==="ja"?"今日はまだありません":"None yet today"}</span>`;
+  return `<div class="panel" style="margin-top:10px;background:#fff7ed;border:2px solid #fdba74">
+    <b style="color:#9a3412">⚠ ${lang==="ja"?"今日の 直積みに変更コース":"Today: changed to direct loading"}</b>
+    <p class="hint" style="margin-top:2px">${lang==="ja"?"ここに入れたコースは、横持ち登録画面で選べなくなります（今日だけ）。":"Courses entered here cannot be selected on the registration screen (today only)."}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chips}</div>
+    <div style="display:flex;gap:8px;margin-top:8px;${voNote}">
+      <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
+      <button class="btn small" style="padding:0 16px;background:#ea580c" onclick="addDirectLoadCourse()">＋ ${t().add}</button>
+    </div>
+  </div>`;
+}
+
 function renderPallet(){
   const rowHtml=r=>{ const n=palBase(r); const tm=palTime(r);
     return `<div class="panel" style="margin-bottom:10px">
@@ -373,13 +403,13 @@ function renderPallet(){
 function renderVolume(){
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569"><b>👁 ${lang==="ja"?"閲覧専用です。入力はできません。":"View only. Cannot input."}</b></div>`:"";
   const rowHtml=r=>{
-    const v=volTodayVal(r); const ok=volTodayOk(r); const absent=volTodayAbsent(r);
+    const v=volTodayVal(r); const ok=volTodayOk(r); const attend=volTodayAttend(r);
     const dlText = r.deadline_hour!=null ? (lang==="ja"?`${r.deadline_hour}時${(r.deadline_minute||0)>0?(r.deadline_minute+"分"):""}までに入力`:`Enter by ${r.deadline_hour}:${("0"+(r.deadline_minute||0)).slice(-2)}`) : "";
     return `<div class="panel" style="margin-bottom:10px">
       <b style="font-size:16px">${esc(r.label)}</b>
       <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
-      <label style="display:block;font-size:12px;color:#64748b;font-weight:normal;margin-top:8px">${lang==="ja"?"当日の欠勤人数":"Absences today"}</label>
-      <input id="va_${r.id}" inputmode="numeric" placeholder="0" value="${absent>0?absent:""}" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
+      <label style="display:block;font-size:12px;color:#64748b;font-weight:normal;margin-top:8px">${lang==="ja"?"当日の出勤人数":"Attendance today"}</label>
+      <input id="va_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"人数":"people"}" value="${attend!=null?attend:""}" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
         <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${(isViewOnly||isDestOnly)?"disabled":""}>
         <span style="font-size:14px">${lang==="ja"?"問題なし（塊出荷の為など）":"No issue (e.g. bulk shipment)"}</span>
@@ -401,29 +431,23 @@ function renderVolume(){
 function volRecalc(id){
   const r=vol.find(x=>x.id===id); if(!r) return;
   const el=document.getElementById("vcalc_"+id); if(!el) return;
-  const inp=document.getElementById("vv_"+id); const ab=document.getElementById("va_"+id);
+  const inp=document.getElementById("vv_"+id); const at=document.getElementById("va_"+id);
   const v=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
-  const absentInput=ab&&ab.value.trim()!==""?parseInt(ab.value):0;
-  const planned=volTodayPlanned(r);
-  if(planned==null){
-    el.innerHTML=`<p class="hint">${lang==="ja"?"出勤予定人数が未設定です（マスタ変更で入力してください）":"Planned headcount not set (enter it in master data)"}</p>`;
+  const attend=at&&at.value.trim()!==""?parseInt(at.value):null;
+  if(attend==null){
+    el.innerHTML=`<p class="hint">${lang==="ja"?"出勤人数を入力すると、処理能力・負荷率が自動計算されます":"Enter attendance to auto-calculate capacity and load"}</p>`;
     return;
   }
-  const actual=Math.max(0,planned-(absentInput||0));
-  let html=`<div style="display:flex;gap:10px;font-size:13px;color:#475569;flex-wrap:wrap">
-    <span>${lang==="ja"?"出勤予定":"Planned"} ${planned}${lang==="ja"?"名":""}</span>
-    <span>−</span><span>${lang==="ja"?"欠勤":"Absent"} ${absentInput||0}${lang==="ja"?"名":""}</span>
-    <span>＝</span><span style="font-weight:bold;color:#1e3a8a">${lang==="ja"?"実出勤":"Actual"} ${actual}${lang==="ja"?"名":""}</span>
-  </div>`;
+  let html=`<div style="font-size:13px;color:#475569">${lang==="ja"?"出勤":"Attendance"}：<b style="color:#1e3a8a">${attend}${lang==="ja"?"名":""}</b></div>`;
   if(r.productivity!=null && r.work_hours!=null){
-    const cap=Math.round(r.productivity*r.work_hours*actual);
+    const cap=Math.round(r.productivity*r.work_hours*attend);
     html+=`<div style="margin-top:6px;font-size:13px;color:#475569">${lang==="ja"?"処理能力":"Capacity"}：<b>${cap}${lang==="ja"?"件":""}</b></div>`;
     if(v!=null && cap>0){
       const ratio=v/cap;
       const pct=Math.round(ratio*100);
-      let st="ok", stLabel=lang==="ja"?"正常":"OK", stColor="#15803d";
-      if(r.alert_ratio!=null && ratio>=r.alert_ratio){ st="alert"; stLabel=lang==="ja"?"警告":"Alert"; stColor="#b91c1c"; }
-      else if(r.warn_ratio!=null && ratio>=r.warn_ratio){ st="warn"; stLabel=lang==="ja"?"注意":"Caution"; stColor="#b45309"; }
+      let stLabel=lang==="ja"?"正常":"OK", stColor="#15803d";
+      if(r.alert_ratio!=null && ratio>=r.alert_ratio){ stLabel=lang==="ja"?"警告":"Alert"; stColor="#b91c1c"; }
+      else if(r.warn_ratio!=null && ratio>=r.warn_ratio){ stLabel=lang==="ja"?"注意":"Caution"; stColor="#b45309"; }
       html+=`<div style="margin-top:6px;font-size:13px;color:#475569">${lang==="ja"?"負荷率":"Load"}：<b style="color:${stColor}">${pct}%</b>　${lang==="ja"?"状態":"Status"}：<b style="color:${stColor}">${stLabel}</b></div>`;
     }
   } else {
@@ -491,12 +515,14 @@ async function afterLogin(){
   await loadPal();
   await loadMaster();
   await loadVol();
+  await loadDirectLoad();
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"load_records"},loadRecords)
     .on("postgres_changes",{event:"*",schema:"public",table:"courses"},loadRecords)
     .on("postgres_changes",{event:"*",schema:"public",table:"yokomochi_status"},loadYoko)
     .on("postgres_changes",{event:"*",schema:"public",table:"pallet_remain"},loadPal)
     .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster)
-    .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol).subscribe();
+    .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol)
+    .on("postgres_changes",{event:"*",schema:"public",table:"direct_load_courses"},loadDirectLoad).subscribe();
 }
 async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; isAdminAllowed=false; pendingCompleteId=null; renderLogin(); }
 
@@ -617,6 +643,7 @@ async function render(){
       <div class="home-grid">
         <div class="home-left">
           <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
+          ${renderDirectLoad()}
           <div style="display:flex;gap:8px;margin-top:10px;align-items:stretch">
             <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a;text-align:center;display:flex;flex-direction:column;justify-content:center"><div style="font-size:13px">${t().today}</div><div style="font-size:24px;font-weight:800">${todays.length}<span style="font-size:14px"> ${t().ken}</span></div></div>
             <button class="btn ghost" style="flex:1;margin:0;line-height:1.4" onclick="go('list')">📋 ${lang==="ja"?"横持ち済み<br>一覧を見る":"View all<br>records"}</button>
@@ -642,7 +669,6 @@ async function render(){
   }
   else if(view.name==="detail"){ renderDetail(view.id); return; }
   else if(view.name==="addmore"){ renderAddMore(view.id); return; }
-  else if(view.name==="volshift"){ renderVolShift(view.volId); return; }
   else if(view.name==="dashboard"){ renderDashboard(); }
   else if(view.name==="search"){ renderSearch(); return; }
   else if(view.name==="history"){ renderHistory(); return; }
@@ -784,7 +810,12 @@ function drawCandidates(){
     const fn = inMix?"mixPick":"addCand";
     return `<div style="margin-bottom:8px">${head}${pickBar}
       <div id="candList_${key}" class="cand-list" style="overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
-      ${arr.map((v,i)=>{const col=colorOf(key,v);return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;}).join("")}</div>
+      ${arr.map((v,i)=>{
+        const col=colorOf(key,v);
+        const blocked=isDirectLoadCode(v);
+        if(blocked) return `<button class="chip" disabled style="background:#fee2e2;border:1px solid #fecaca;color:#991b1b;text-decoration:line-through;opacity:.7" title="${lang==="ja"?"本日は直積みのため選べません":"Direct loading today, cannot select"}">${esc(v)}</button>`;
+        return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;
+      }).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
         ${inMix?"":`<input id="cPl_${key}" inputmode="numeric" placeholder="PL" style="width:56px;text-align:center">`}
@@ -810,7 +841,13 @@ function addCand(key,i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); cons
 function mixToggle(key){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
 function mixPick(key,i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
 function mixRemove(idx){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
-function mixConfirm(){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
+function mixConfirm(){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  if(!mix||mix.picks.length<2) return;
+  const blocked=mix.picks.filter(isDirectLoadCode);
+  if(blocked.length){ toast(lang==="ja"?"直積みに変更されたコースが含まれています："+blocked.join("、"):"Contains direct-loading courses: "+blocked.join(", ")); return; }
+  regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses();
+}
 function drawDest(){
   const area=document.getElementById("destArea"); if(!area) return;
   const arr=getMaster("dest");
@@ -917,6 +954,10 @@ function onQrScan(text){
   const now=Date.now();
   if(code===qrLast && now-qrLastT<2000) return;
   qrLast=code; qrLastT=now;
+  if(isDirectLoadCode(code)){
+    const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"直積みのため登録できません：":"Direct loading, cannot add: ")+code; big.style.color="#fca5a5"; setTimeout(()=>{ if(big) big.style.color="#fff"; },1600); }
+    return;
+  }
   regCourses.push({code:code,pl:1}); qrSession.push(code);
   if(typeof drawCourses==="function") drawCourses();
   if(qrBeep) qrBeepPlay();
@@ -931,11 +972,12 @@ function closeQr(){
   const ov=document.getElementById("qrOverlay"); if(ov) ov.remove();
   if(typeof drawCourses==="function") drawCourses();
 }
-function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); }
+function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; } const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); }
 function addCourseG(key){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
+  if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
   if(mix && mix.key===key){
     mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return;
   }
@@ -968,6 +1010,8 @@ function anomRequired(){
   if(!truckEl||!truckEl.value.trim())a.push(lang==="ja"?"トラックが未入力です":"Truck missing");
   if(!regDests.length)a.push(lang==="ja"?"納品先が未入力です":"Destination missing");
   if(regCourses.length===0)a.push(lang==="ja"?"コース看板が未入力です":"Course sign missing");
+  const directHit=regCourses.filter(c=>isDirectLoadCode(c.code));
+  if(directHit.length)a.push((lang==="ja"?"本日「直積み」に変更されたコースが含まれています：":"Contains courses set to direct loading today: ")+directHit.map(c=>c.code).join("、"));
   return a;
 }
 function anomList(){
@@ -1247,7 +1291,6 @@ function renderMasterVolume(){
         </div>
       </div>
       <button class="btn small ghost" style="width:100%;margin-top:10px" onclick="masterVolSave(${r.id})">${lang==="ja"?"この場所を保存":"Save this row"}</button>
-      <button class="btn small" style="width:100%;margin-top:8px;background:#7c3aed;color:#fff" onclick="go('volshift',{volId:${r.id}})">👥 ${lang==="ja"?"出勤予定人数（シフト）を編集":"Edit planned headcount (shift)"}</button>
     </div>`;
   app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
     <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -1266,68 +1309,6 @@ function renderMasterVolume(){
     <p class="hint" style="margin-top:8px">${lang==="ja"?"入力値が「注意」以上で黄色、「警告」以上で赤色になります。各項目を直したら「この場所を保存」を押してください。":"Values at or above Warn turn yellow; at or above Alert turn red. Press save after editing."}</p>
     <div style="margin-top:10px">${vol.length?vol.map(rowHtml).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
   </div>`+tabbar();
-}
-let vsOffset=0; // 0=今月の締め(21日〜翌月20日), -1=1つ前の期間, 1=1つ後の期間
-function volShiftPeriod(offset){
-  const n=new Date();
-  let y=n.getFullYear(), m=n.getMonth(); // 0-indexed month
-  if(n.getDate()<21) m-=1; // まだ21日前なら、現在の期間は「前月21日〜今月20日」
-  m+=offset;
-  const startY=y+Math.floor(m/12), startM=((m%12)+12)%12;
-  const start=new Date(startY,startM,21);
-  const end=new Date(startY,startM+1,20);
-  const days=[];
-  const d=new Date(start);
-  while(d<=end){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
-  return days;
-}
-let vsLastVolId=null;
-function renderVolShift(volId){
-  const r=vol.find(x=>x.id===volId);
-  if(!r){ go("master"); return; }
-  if(vsLastVolId!==volId){ vsOffset=0; vsLastVolId=volId; }
-  const days=volShiftPeriod(vsOffset);
-  const periodLabel=`${days[0].getMonth()+1}/${days[0].getDate()} 〜 ${days[days.length-1].getMonth()+1}/${days[days.length-1].getDate()}`;
-  const getH=ds=>{ const row=volShift.find(s=>s.volume_id===volId && s.shift_date===ds); return row?row.headcount:""; };
-  const dow=["日","月","火","水","木","金","土"];
-  const rowsHtml=days.map(d=>{
-    const ds=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
-    const isWk=d.getDay()===0||d.getDay()===6;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
-      <div style="width:70px;font-size:14px;${isWk?"color:#dc2626":"color:#1e293b"}">${d.getMonth()+1}/${d.getDate()}（${dow[d.getDay()]}）</div>
-      <input id="vs_${ds}" inputmode="numeric" value="${getH(ds)}" placeholder="0" style="flex:1;text-align:center" ${(isViewOnly||isDestOnly)?"disabled":""}>
-      <span style="font-size:13px;color:#64748b">${lang==="ja"?"名":"ppl"}</span>
-    </div>`;
-  }).join("");
-  app.innerHTML=topbar()+header((lang==="ja"?"出勤予定人数：":"Planned headcount: ")+esc(r.label),"go('master')")+`<div class="pad" style="padding-bottom:110px">
-    <div class="panel" style="background:#f5f3ff;border:none;color:#5b21b6;text-align:center;display:flex;align-items:center;justify-content:space-between">
-      <button class="chip" onclick="vsOffset--;renderVolShift(${volId})">‹</button>
-      <b>${periodLabel}</b>
-      <button class="chip" onclick="vsOffset++;renderVolShift(${volId})">›</button>
-    </div>
-    <p class="hint">${lang==="ja"?"日付ごとに出勤予定人数を入力してください。物量入力画面の「実出勤」計算に使われます。":"Enter the planned headcount for each day. Used to calculate actual attendance on the volume input screen."}</p>
-    <div style="margin-top:6px">${rowsHtml}</div>
-  </div>
-  <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
-    <button class="btn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="saveVolShift(${volId})">✔ ${lang==="ja"?"保存する":"Save"}</button>
-  </div>`;
-}
-async function saveVolShift(volId){
-  if(isViewOnly||isDestOnly) return viewOnlyBlock();
-  const days=volShiftPeriod(vsOffset);
-  const rows=days.map(d=>{
-    const ds=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
-    const el=document.getElementById("vs_"+ds);
-    const v=el&&el.value.trim()!==""?parseInt(el.value):null;
-    return {ds,v};
-  }).filter(x=>x.v!=null);
-  if(!rows.length){ toast(lang==="ja"?"保存しました":"Saved"); go("master"); return; }
-  const payload=rows.map(x=>({volume_id:volId, shift_date:x.ds, headcount:x.v, updated_at:new Date().toISOString()}));
-  const {error}=await sb.from("volume_shift").upsert(payload,{onConflict:"volume_id,shift_date"});
-  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); console.error(error); return; }
-  toast(lang==="ja"?"保存しました":"Saved");
-  await loadVol();
-  go("master");
 }
 async function masterVolAdd(){
   const el=document.getElementById("mvNew"); const v=el.value.trim(); if(!v) return;
@@ -1447,7 +1428,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,renderVolShift,saveVolShift});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
