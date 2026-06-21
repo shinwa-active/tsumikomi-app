@@ -1416,4 +1416,35 @@ async function masterUpload(){
   if(!confirm(lang==="ja"?"この端末のマスタ（トラック・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
   const kinds=["truck","dest","course_dc1","course_dc3","oki_chi"]; let added=0;
   for(const k of kinds){
-    let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+
+    let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+k)||"[]"); }catch(e){}
+    const existing=new Set(getMaster(k));
+    let so=(masterRows[k]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0);
+    const rows=[];
+    local.forEach(v=>{ if(v && !existing.has(v)){ so++; rows.push({kind:k,value:v,sort_order:so}); existing.add(v); } });
+    if(rows.length){ const {error}=await sb.from("master_items").insert(rows); if(!error) added+=rows.length; }
+  }
+  await loadMaster();
+  toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
+}
+
+/* ---------- 設定 ---------- */
+function renderSettings(){
+  app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
+    <div class="panel"><b>🌐 ${t().language}</b>
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn small" style="flex:1;${lang==="ja"?"":"background:#f1f5f9;color:#475569"}" onclick="setLang('ja')">日本語</button>
+        <button class="btn small" style="flex:1;${lang==="en"?"":"background:#f1f5f9;color:#475569"}" onclick="setLang('en')">English</button>
+      </div></div>
+    <button class="btn ghost" onclick="logout()">${t().logout}</button>
+  </div>`+tabbar();
+}
+function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
+
+/* グローバル公開（onclick用） */
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,renderVolShift,saveVolShift});
+window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
+
+start();
+</script>
+</body>
+</html>
