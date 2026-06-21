@@ -142,7 +142,9 @@ let lang = localStorage.getItem("lang") || "ja";
 let role = "worker";
 let adminAuthed = false;
 let isViewOnly = false;
+let isDestOnly = false;
 const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
+const DEST_ONLY_EMAILS = ["u123456@shinwa-active.co.jp"];
 let user = null;
 let records = [];
 let view = {name:"home"};
@@ -152,7 +154,7 @@ const app = document.getElementById("app");
 function t(){ return T[lang]; }
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function maskName(s){ s=String(s||""); if(!s) return s; if(/^U\d{6}/i.test(s)) return s; const head=s.slice(0,3); return head+"………"; }
-function viewOnlyBlock(){ toast(lang==="ja"?"閲覧専用のため操作できません":"View-only: cannot operate"); return true; }
+function viewOnlyBlock(){ toast(isDestOnly?(lang==="ja"?"このアカウントでは操作できません":"This account cannot operate this"):(lang==="ja"?"閲覧専用のため操作できません":"View-only: cannot operate")); return true; }
 function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
 
 /* ---- マスタ（クラウド共有） ---- */
@@ -228,7 +230,7 @@ async function loadYoko(){
   if(view.name==="home") render();
 }
 async function toggleYoko(id){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const row=yoku.find(x=>x.id===id); if(!row) return;
   let justCompleted=false;
   if(!ydone(row)){
@@ -267,7 +269,7 @@ async function loadPal(){
   if(view.name==="pallet"||view.name==="home") render();
 }
 async function palAdjust(id,delta){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const row=pal.find(x=>x.id===id); if(!row) return;
   let v=palBase(row)+delta; if(v<0) v=0;
   await sb.from("pallet_remain").update({remain:v,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",id);
@@ -299,7 +301,7 @@ async function loadVol(){
   if(view.name==="volume"||view.name==="home") render();
 }
 async function volSave(){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const rows=vol.map(r=>{
     const inp=document.getElementById("vv_"+r.id);
     const chk=document.getElementById("vc_"+r.id);
@@ -320,7 +322,7 @@ function renderPallet(){
         <b style="font-size:16px">${esc(r.label)}</b>
         <span style="margin-left:auto;color:#94a3b8;font-size:12px">${tm?(lang==="ja"?tm+" 時点":tm):(lang==="ja"?"未更新":"—")}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;${isViewOnly?"opacity:.5":""}">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;${(isViewOnly||isDestOnly)?"opacity:.5":""}">
         <button onclick="palAdjust(${r.id},-5)" style="flex:1;background:#fee2e2;color:#b91c1c;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">−5</button>
         <button onclick="palAdjust(${r.id},-1)" style="flex:1;background:#fecaca;color:#991b1b;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">−1</button>
         <div style="flex:1.4;text-align:center"><span style="font-size:30px;font-weight:800;color:#0d9488">${n}</span><span style="font-size:14px;color:#64748b"> PL</span></div>
@@ -332,19 +334,19 @@ function renderPallet(){
   app.innerHTML=topbar()+header(lang==="ja"?"パレット残数":"Pallets left","go('home')")+`<div class="pad">
     <div class="panel" style="background:#f0fdfa;border:none;color:#115e59;text-align:center"><div style="font-size:13px">${lang==="ja"?"残り合計":"Total left"}</div><div style="font-size:30px;font-weight:800">${total}<span style="font-size:15px"> PL</span></div></div>
     ${pal.map(rowHtml).join("")}
-    <p class="hint">${isViewOnly?(lang==="ja"?"閲覧専用のため、数の変更はできません。":"View only: cannot change values."):(lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。翌日は自動でゼロに戻ります。<br>リアルタイムで全体共有されます。":"Adjust with +/-; time auto-records. Resets next day.<br>Shared in real time with everyone.")}</p>
+    <p class="hint">${(isViewOnly||isDestOnly)?(lang==="ja"?"閲覧専用のため、数の変更はできません。":"View only: cannot change values."):(lang==="ja"?"＋／−で残数を変えると、時刻が自動で記録されます。翌日は自動でゼロに戻ります。<br>リアルタイムで全体共有されます。":"Adjust with +/-; time auto-records. Resets next day.<br>Shared in real time with everyone.")}</p>
   </div>`+tabbar();
 }
 function renderVolume(){
-  const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569"><b>👁 ${lang==="ja"?"閲覧専用です。入力はできません。":"View only. Cannot input."}</b></div>`:"";
+  const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569"><b>👁 ${lang==="ja"?"閲覧専用です。入力はできません。":"View only. Cannot input."}</b></div>`:"";
   const rowHtml=r=>{
     const v=volTodayVal(r); const ok=volTodayOk(r);
     const dlText = r.deadline_hour!=null ? (lang==="ja"?`${r.deadline_hour}時${(r.deadline_minute||0)>0?(r.deadline_minute+"分"):""}までに入力`:`Enter by ${r.deadline_hour}:${("0"+(r.deadline_minute||0)).slice(-2)}`) : "";
     return `<div class="panel" style="margin-bottom:10px">
       <b style="font-size:16px">${esc(r.label)}</b>
-      <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${isViewOnly?"disabled":""}>
+      <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${(isViewOnly||isDestOnly)?"disabled":""}>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
-        <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${isViewOnly?"disabled":""}>
+        <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${(isViewOnly||isDestOnly)?"disabled":""}>
         <span style="font-size:14px">${lang==="ja"?"問題なし（塊出荷の為など）":"No issue (e.g. bulk shipment)"}</span>
       </label>
       ${dlText?`<p class="hint" style="margin-top:6px">${dlText}</p>`:""}
@@ -356,7 +358,7 @@ function renderVolume(){
     ${vol.map(rowHtml).join("")}
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
-    <button class="btn" style="${isViewOnly?"opacity:.4":""}" onclick="volSave()">✔ ${lang==="ja"?"保存する":"Save"}</button>
+    <button class="btn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="volSave()">✔ ${lang==="ja"?"保存する":"Save"}</button>
   </div>`;
 }
 function openPhoto(i){
@@ -379,16 +381,30 @@ async function start(){
 function renderLogin(){
   app.innerHTML = `<div class="pad" style="padding-top:48px;">
     <h1>${t().loginTitle}</h1><p>${t().loginSub}</p>
-    <input id="email" type="email" placeholder="${t().email}" autocomplete="username">
-    <input id="pass" type="password" placeholder="${t().pass}" autocomplete="current-password" style="margin-top:10px;">
+    <label style="margin-top:0">${t().email}</label>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input id="emailId" placeholder="" autocomplete="username" style="flex:1" autocapitalize="off" autocorrect="off">
+      <span style="white-space:nowrap;color:#475569;font-weight:bold">@shinwa-active.co.jp</span>
+    </div>
+    <p class="hint">${lang==="ja"?"アルファベットは小文字のみです（大文字は入力できません）":"Letters are lowercase only (uppercase cannot be entered)"}</p>
+    <label>${t().pass}</label>
+    <input id="pass" type="password" placeholder="${t().pass}" autocomplete="current-password">
     <button class="btn" id="loginBtn">${t().login}</button>
     <div id="loginMsg" class="err"></div>
   </div>`;
   document.getElementById("loginBtn").onclick=doLogin;
   document.getElementById("pass").onkeydown=e=>{ if(e.key==="Enter") doLogin(); };
+  const emailIdEl=document.getElementById("emailId");
+  emailIdEl.onkeydown=e=>{ if(e.key==="Enter") document.getElementById("pass").focus(); };
+  emailIdEl.oninput=()=>{
+    const pos=emailIdEl.selectionStart;
+    const lower=emailIdEl.value.toLowerCase();
+    if(lower!==emailIdEl.value){ emailIdEl.value=lower; try{ emailIdEl.setSelectionRange(pos,pos); }catch(e){} }
+  };
 }
 async function doLogin(){
-  const email=document.getElementById("email").value.trim();
+  const idPart=document.getElementById("emailId").value.trim().toLowerCase().replace(/@.*$/,"");
+  const email=idPart?idPart+"@shinwa-active.co.jp":"";
   const pass=document.getElementById("pass").value;
   const msg=document.getElementById("loginMsg"); msg.style.color="#64748b"; msg.textContent=t().loggingIn;
   const {error}=await sb.auth.signInWithPassword({email,password:pass});
@@ -398,6 +414,7 @@ async function doLogin(){
 }
 async function afterLogin(){
   isViewOnly = !!(user && user.email && VIEW_ONLY_EMAILS.includes(user.email.toLowerCase()));
+  isDestOnly = !!(user && user.email && DEST_ONLY_EMAILS.includes(user.email.toLowerCase()));
   await loadRecords();
   await loadYoko();
   await loadPal();
@@ -410,7 +427,7 @@ async function afterLogin(){
     .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster)
     .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol).subscribe();
 }
-async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; pendingCompleteId=null; renderLogin(); }
+async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; pendingCompleteId=null; renderLogin(); }
 
 /* ===================== 画面描画 ===================== */
 function go(name,params){
@@ -478,7 +495,7 @@ async function render(){
     };
     const ybtn=r=>{ const d=ydone(r); const {main,tag}=splitYokoLabel(r.label);
       const mainSize = main.length>=11 ? "10.5px" : (main.length>=9 ? "11.5px" : "13px");
-      return `<button onclick="toggleYoko(${r.id})" style="text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:10px;display:flex;align-items:flex-start;gap:7px;${isViewOnly?"opacity:.5":""}">
+      return `<button onclick="toggleYoko(${r.id})" style="text-align:left;border:2px solid ${d?"#16a34a":(r.priority?"#f59e0b":"#e2e8f0")};background:${d?"#dcfce7":(r.priority?"#fffbeb":"#fff")};border-radius:12px;padding:10px;display:flex;align-items:flex-start;gap:7px;${(isViewOnly||isDestOnly)?"opacity:.5":""}">
         <span style="font-size:17px;margin-top:1px">${d?"✅":(r.priority?"🔴":"⬜")}</span>
         <span style="flex:1;min-width:0">
           <span style="display:block;font-weight:bold;font-size:${mainSize};line-height:1.3;white-space:nowrap;overflow:hidden">${esc(main)}</span>
@@ -496,7 +513,7 @@ async function render(){
       <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(pr.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${pr.map(ybtn).join("")}</div>
       <div style="font-weight:bold;color:#475569;margin-top:14px">${lang==="ja"?"通常":"Normal"}</div>
       <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(no.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${no.map(ybtn).join("")}</div>
-      <p class="hint" style="margin-top:8px">${isViewOnly?(lang==="ja"?"閲覧専用のため、ここはチェックできません。":"View only: cannot check here."):(lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day.")}</p>
+      <p class="hint" style="margin-top:8px">${(isViewOnly||isDestOnly)?(lang==="ja"?"閲覧専用のため、ここはチェックできません。":"View only: cannot check here."):(lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day.")}</p>
     </div>`;
     const palTotal=pal.reduce((s,r)=>s+palBase(r),0);
     const volStatusInfo={
@@ -562,7 +579,7 @@ async function render(){
 let regPhotos=[], regCourses=[], regOki=[], regDests=[];
 function renderRegister(){
   regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
-  const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
+  const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
   app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
     <label>${t().fOki}</label>
@@ -591,7 +608,7 @@ function renderRegister(){
     <div id="anom"></div>
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
-    <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveRecord()">✔ ${t().save}</button>
+    <button class="btn" id="saveBtn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="saveRecord()">✔ ${t().save}</button>
   </div>`;
   document.getElementById("file").onchange=onFiles;
   document.getElementById("truck").oninput=()=>{ drawTruck(); updateAnom(); };
@@ -601,7 +618,7 @@ function renderAddMore(id){
   const r=records.find(x=>String(x.id)===String(id));
   if(!r){ go("home"); return; }
   regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
-  const voNote=isViewOnly?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
+  const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
   app.innerHTML=topbar()+header(lang==="ja"?"追加で登録":"Add more","go('detail',{id:'"+id+"'})")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
     <div class="panel" style="background:#eff6ff;border:none;color:#1e3a8a">
@@ -625,7 +642,7 @@ function renderAddMore(id){
     <div id="anom"></div>
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
-    <button class="btn" id="saveBtn" style="${isViewOnly?"opacity:.4":""}" onclick="saveAddMore('${id}')">✔ ${lang==="ja"?"追加を保存":"Save addition"}</button>
+    <button class="btn" id="saveBtn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="saveAddMore('${id}')">✔ ${lang==="ja"?"追加を保存":"Save addition"}</button>
   </div>`;
   drawOki(); drawDest(); drawCandidates(); drawCourses(); updateAnomAddMore();
 }
@@ -634,13 +651,13 @@ function updateAnomAddMore(){
   const el=document.getElementById("anom");
   if(el) el.innerHTML = a.length? `<div class="panel" style="background:#fef2f2;border:2px solid #fecaca;color:#b91c1c;margin-top:14px"><b>⚠ ${t().check}</b><ul style="margin:6px 0 0;padding-left:20px">${a.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
   const b=document.getElementById("saveBtn"); if(b){
-    if(isViewOnly){ b.style.opacity=".4"; }
+    if(isViewOnly||isDestOnly){ b.style.opacity=".4"; }
     else if(a.length){ b.disabled=true; b.style.background="#cbd5e1"; b.style.opacity="1"; }
     else { b.disabled=false; b.style.background="#2563eb"; b.style.opacity="1"; }
   }
 }
 async function saveAddMore(id){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   if(!regOki.length || regCourses.length===0){ toast(lang==="ja"?"必須項目が未入力です":"Required fields missing"); updateAnomAddMore(); return; }
   const r=records.find(x=>String(x.id)===String(id)); if(!r) return;
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
@@ -672,7 +689,7 @@ function drawOki(){
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickOki(${i})" style="${regOki.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
     + (regOki.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regOki.map(esc).join("、")}</p>`:"");
 }
-function pickOki(i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; const idx=regOki.indexOf(v); if(idx>=0) regOki.splice(idx,1); else regOki.push(v); drawOki(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function pickOki(i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; const idx=regOki.indexOf(v); if(idx>=0) regOki.splice(idx,1); else regOki.push(v); drawOki(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
@@ -714,11 +731,11 @@ function drawCandidates(){
     if(el && _listScroll[k]) el.scrollTop=_listScroll[k];
   });
 }
-function addCand(key,i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
-function mixToggle(key){ if(isViewOnly) return viewOnlyBlock(); mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
-function mixPick(key,i){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
-function mixRemove(idx){ if(isViewOnly) return viewOnlyBlock(); if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
-function mixConfirm(){ if(isViewOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
+function addCand(key,i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
+function mixToggle(key){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
+function mixPick(key,i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
+function mixRemove(idx){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
+function mixConfirm(){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix||mix.picks.length<2) return; regCourses.push({code:mix.picks.join(" ＋ "),pl:1,mixed:true,grp:mix.key}); mix=null; drawCandidates(); drawCourses(); }
 function drawDest(){
   const area=document.getElementById("destArea"); if(!area) return;
   const arr=getMaster("dest");
@@ -726,7 +743,7 @@ function drawDest(){
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickDest(${i})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
     + (regDests.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regDests.map(esc).join("、")}</p>`:"");
 }
-function pickDest(i){ if(isViewOnly) return viewOnlyBlock(); const arr=getMaster("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function pickDest(i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function drawTruck(){
   const area=document.getElementById("truckArea"); if(!area) return;
   const inp=document.getElementById("truck");
@@ -736,12 +753,12 @@ function drawTruck(){
   area.innerHTML = arr.map(v=>`<button class="chip" onclick="pickTruck(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="${cur===v?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("");
 }
 function pickTruck(v){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const inp=document.getElementById("truck"); if(!inp) return;
   inp.value = (inp.value===v) ? "" : v;
   drawTruck(); updateAnom();
 }
-function onFiles(e){ if(isViewOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
+function onFiles(e){ if(isViewOnly||isDestOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
 function drawPhotos(){
   const a=document.getElementById("photoArea");
   a.innerHTML=regPhotos.map((f,i)=>`<div style="position:relative"><img class="thumb" style="width:80px;height:80px" src="${URL.createObjectURL(f)}"><button onclick="regPhotos.splice(${i},1);drawPhotos();updateAnom()" style="position:absolute;top:-8px;right:-8px;background:#dc2626;color:#fff;border:none;border-radius:999px;width:24px;height:24px">×</button></div>`).join("");
@@ -841,7 +858,7 @@ function closeQr(){
 }
 function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); }
 function addCourseG(key){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(mix && mix.key===key){
@@ -890,7 +907,7 @@ function updateAnom(){
   const el=document.getElementById("anom");
   if(el) el.innerHTML = a.length? `<div class="panel" style="background:#fef2f2;border:2px solid #fecaca;color:#b91c1c;margin-top:14px"><b>⚠ ${t().check}</b><ul style="margin:6px 0 0;padding-left:20px">${a.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:"";
   const b=document.getElementById("saveBtn"); if(b){
-    if(isViewOnly){ b.style.opacity=".4"; }
+    if(isViewOnly||isDestOnly){ b.style.opacity=".4"; }
     else if(req.length){ b.disabled=true; b.style.background="#cbd5e1"; b.style.opacity="1"; }
     else { b.disabled=false; b.style.background=a.length?"#f97316":"#2563eb"; b.style.opacity="1"; }
   }
@@ -903,7 +920,7 @@ async function ensureMasterValue(kind,v){
   if(!error&&data){ (masterRows[kind]=masterRows[kind]||[]).push({id:data[0].id,value:v,sort_order:so,color:""}); }
 }
 async function saveRecord(){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const req=anomRequired();
   if(req.length){
     toast(lang==="ja"?"必須項目が未入力です":"Required fields missing");
@@ -959,13 +976,13 @@ async function renderDetail(id){
   if(courses.length){
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
       ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
-      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed)?"opacity:.5":""}">
+      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed||isViewOnly)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed||isViewOnly)?"opacity:.5":""}">
         <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
   }
   let actions="";
   if(!r.completed){
-    actions+=`<button class="btn green" style="${isViewOnly?"opacity:.5":""}" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
-    actions+=`<button class="btn ghost" style="${isViewOnly?"opacity:.5":""}" onclick="go('addmore',{id:'${r.id}'})">➕ ${lang==="ja"?"追加で登録":"Add more"}</button>`;
+    actions+=`<button class="btn green" style="${(isViewOnly||isDestOnly)?"opacity:.5":""}" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
+    actions+=`<button class="btn ghost" style="${(isViewOnly||isDestOnly)?"opacity:.5":""}" onclick="go('addmore',{id:'${r.id}'})">➕ ${lang==="ja"?"追加で登録":"Add more"}</button>`;
   }
   if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
     <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
@@ -978,7 +995,7 @@ async function renderDetail(id){
   </div>`;
 }
 async function markComplete(id){
-  if(isViewOnly) return viewOnlyBlock();
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
   if(String(pendingCompleteId)===String(id)) pendingCompleteId=null;
   await sb.from("load_records").update({completed:true,completed_at:new Date().toISOString()}).eq("id",id);
   const rec=records.find(x=>String(x.id)===String(id));
@@ -999,9 +1016,9 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
-async function toggleCourse(cid,rid,cur){ await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
+async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
-async function delRecord(id){ if(isViewOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
+async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
 
 /* ---------- ダッシュボード ---------- */
 function renderDashboard(){
