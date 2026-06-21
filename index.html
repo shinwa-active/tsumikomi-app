@@ -276,6 +276,19 @@ async function palAdjust(id,delta){
   let v=palBase(row)+delta; if(v<0) v=0;
   await sb.from("pallet_remain").update({remain:v,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",id);
   await loadPal();
+  if(v===0) await checkPalletZeroToYoko(row.label);
+}
+async function checkPalletZeroToYoko(palLabel){
+  const prefix=yokoGroupPrefix(palLabel); if(!prefix) return;
+  const dest = palLabel.indexOf("DC1")>=0 ? "DC1" : (palLabel.indexOf("DC3")>=0 ? "DC3" : null);
+  if(!dest) return;
+  const targets=yoku.filter(r=>yokoGroupPrefix(r.label)===prefix && r.label.indexOf(dest)>=0 && !ydone(r));
+  if(!targets.length) return;
+  for(const t of targets){
+    await sb.from("yokomochi_status").update({done:true,done_at:new Date().toISOString(),done_date:todayStr(),updated_at:new Date().toISOString()}).eq("id",t.id);
+  }
+  await loadYoko();
+  toast(lang==="ja"?prefix+"→"+dest+" を完了にしました（パレット残数0のため）":prefix+"→"+dest+" marked done (pallets at 0)");
 }
 
 /* ---- コース記号の表記ゆれ統一 ---- */
