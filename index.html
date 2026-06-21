@@ -278,8 +278,30 @@ async function palAdjust(id,delta){
 
 /* ---- 物量管理 ---- */
 let vol=[];
+let volShift=[]; // [{id, volume_id, shift_date, headcount}]
 function volTodayVal(r){ return r.updated_date===todayStr() ? r.today_value : null; }
 function volTodayOk(r){ return r.updated_date===todayStr() ? !!r.today_ok : false; }
+function volTodayAbsent(r){ return r.today_absent_date===todayStr() ? (r.today_absent||0) : 0; }
+function volTodayPlanned(r){
+  const row=volShift.find(s=>s.volume_id===r.id && s.shift_date===todayStr());
+  return row ? row.headcount : null;
+}
+function volTodayActual(r){
+  const planned=volTodayPlanned(r);
+  if(planned==null) return null;
+  const actual=planned-volTodayAbsent(r);
+  return actual<0?0:actual;
+}
+function volCapacity(r){
+  const actual=volTodayActual(r);
+  if(actual==null || r.productivity==null || r.work_hours==null) return null;
+  return Math.round(r.productivity*r.work_hours*actual);
+}
+function volLoadRatio(r){
+  const cap=volCapacity(r); const v=volTodayVal(r);
+  if(cap==null || cap===0 || v==null) return null;
+  return v/cap;
+}
 function volDeadlinePassed(r){
   if(r.deadline_hour==null) return false;
   const n=new Date();
@@ -290,14 +312,21 @@ function volStatus(r){
   const v=volTodayVal(r);
   if(v==null){ return volDeadlinePassed(r) ? "missing" : "none"; }
   if(volTodayOk(r)) return "ok";
-  if(r.alert_value!=null && v>=r.alert_value) return "alert";
-  if(r.warn_value!=null && v>=r.warn_value) return "warn";
+  const ratio=volLoadRatio(r);
+  if(ratio!=null && r.alert_ratio!=null && ratio>=r.alert_ratio) return "alert";
+  if(ratio!=null && r.warn_ratio!=null && ratio>=r.warn_ratio) return "warn";
+  if(ratio==null){
+    if(r.alert_value!=null && v>=r.alert_value) return "alert";
+    if(r.warn_value!=null && v>=r.warn_value) return "warn";
+  }
   return "ok";
 }
 async function loadVol(){
   const {data,error}=await sb.from("volume_shipment").select("*").order("sort_order",{ascending:true});
   if(error){ console.error(error); return; }
   vol=data||[];
+  const {data:sdata,error:serror}=await sb.from("volume_shift").select("*");
+  if(!serror) volShift=sdata||[];
   if(view.name==="volume"||view.name==="home") render();
 }
 async function volSave(){
@@ -305,11 +334,13 @@ async function volSave(){
   const rows=vol.map(r=>{
     const inp=document.getElementById("vv_"+r.id);
     const chk=document.getElementById("vc_"+r.id);
+    const ab=document.getElementById("va_"+r.id);
     const val=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
-    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false};
+    const absent=ab&&ab.value.trim()!==""?parseInt(ab.value):0;
+    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false, today_absent:absent};
   });
   for(const row of rows){
-    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
+    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_absent:row.today_absent,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
   }
   toast(lang==="ja"?"物量を保存しました":"Saved");
   await loadVol();
@@ -340,15 +371,18 @@ function renderPallet(){
 function renderVolume(){
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569"><b>👁 ${lang==="ja"?"閲覧専用です。入力はできません。":"View only. Cannot input."}</b></div>`:"";
   const rowHtml=r=>{
-    const v=volTodayVal(r); const ok=volTodayOk(r);
+    const v=volTodayVal(r); const ok=volTodayOk(r); const absent=volTodayAbsent(r);
     const dlText = r.deadline_hour!=null ? (lang==="ja"?`${r.deadline_hour}時${(r.deadline_minute||0)>0?(r.deadline_minute+"分"):""}までに入力`:`Enter by ${r.deadline_hour}:${("0"+(r.deadline_minute||0)).slice(-2)}`) : "";
     return `<div class="panel" style="margin-bottom:10px">
       <b style="font-size:16px">${esc(r.label)}</b>
-      <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${(isViewOnly||isDestOnly)?"disabled":""}>
+      <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
+      <label style="display:block;font-size:12px;color:#64748b;font-weight:normal;margin-top:8px">${lang==="ja"?"当日の欠勤人数":"Absences today"}</label>
+      <input id="va_${r.id}" inputmode="numeric" placeholder="0" value="${absent>0?absent:""}" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
         <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${(isViewOnly||isDestOnly)?"disabled":""}>
         <span style="font-size:14px">${lang==="ja"?"問題なし（塊出荷の為など）":"No issue (e.g. bulk shipment)"}</span>
       </label>
+      <div id="vcalc_${r.id}" style="margin-top:8px"></div>
       ${dlText?`<p class="hint" style="margin-top:6px">${dlText}</p>`:""}
     </div>`;
   };
@@ -360,6 +394,40 @@ function renderVolume(){
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
     <button class="btn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="volSave()">✔ ${lang==="ja"?"保存する":"Save"}</button>
   </div>`;
+  vol.forEach(r=>volRecalc(r.id));
+}
+function volRecalc(id){
+  const r=vol.find(x=>x.id===id); if(!r) return;
+  const el=document.getElementById("vcalc_"+id); if(!el) return;
+  const inp=document.getElementById("vv_"+id); const ab=document.getElementById("va_"+id);
+  const v=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
+  const absentInput=ab&&ab.value.trim()!==""?parseInt(ab.value):0;
+  const planned=volTodayPlanned(r);
+  if(planned==null){
+    el.innerHTML=`<p class="hint">${lang==="ja"?"出勤予定人数が未設定です（マスタ変更で入力してください）":"Planned headcount not set (enter it in master data)"}</p>`;
+    return;
+  }
+  const actual=Math.max(0,planned-(absentInput||0));
+  let html=`<div style="display:flex;gap:10px;font-size:13px;color:#475569;flex-wrap:wrap">
+    <span>${lang==="ja"?"出勤予定":"Planned"} ${planned}${lang==="ja"?"名":""}</span>
+    <span>−</span><span>${lang==="ja"?"欠勤":"Absent"} ${absentInput||0}${lang==="ja"?"名":""}</span>
+    <span>＝</span><span style="font-weight:bold;color:#1e3a8a">${lang==="ja"?"実出勤":"Actual"} ${actual}${lang==="ja"?"名":""}</span>
+  </div>`;
+  if(r.productivity!=null && r.work_hours!=null){
+    const cap=Math.round(r.productivity*r.work_hours*actual);
+    html+=`<div style="margin-top:6px;font-size:13px;color:#475569">${lang==="ja"?"処理能力":"Capacity"}：<b>${cap}${lang==="ja"?"件":""}</b></div>`;
+    if(v!=null && cap>0){
+      const ratio=v/cap;
+      const pct=Math.round(ratio*100);
+      let st="ok", stLabel=lang==="ja"?"正常":"OK", stColor="#15803d";
+      if(r.alert_ratio!=null && ratio>=r.alert_ratio){ st="alert"; stLabel=lang==="ja"?"警告":"Alert"; stColor="#b91c1c"; }
+      else if(r.warn_ratio!=null && ratio>=r.warn_ratio){ st="warn"; stLabel=lang==="ja"?"注意":"Caution"; stColor="#b45309"; }
+      html+=`<div style="margin-top:6px;font-size:13px;color:#475569">${lang==="ja"?"負荷率":"Load"}：<b style="color:${stColor}">${pct}%</b>　${lang==="ja"?"状態":"Status"}：<b style="color:${stColor}">${stLabel}</b></div>`;
+    }
+  } else {
+    html+=`<p class="hint" style="margin-top:6px">${lang==="ja"?"生産性・実働時間が未設定です（マスタ変更で入力してください）":"Productivity/work hours not set (enter in master data)"}</p>`;
+  }
+  el.innerHTML=html;
 }
 function openPhoto(i){
   const u=(window._photoUrls||[])[i]; if(!u) return;
@@ -568,6 +636,7 @@ async function render(){
   }
   else if(view.name==="detail"){ renderDetail(view.id); return; }
   else if(view.name==="addmore"){ renderAddMore(view.id); return; }
+  else if(view.name==="volshift"){ renderVolShift(view.volId); return; }
   else if(view.name==="dashboard"){ renderDashboard(); }
   else if(view.name==="search"){ renderSearch(); return; }
   else if(view.name==="history"){ renderHistory(); return; }
@@ -1152,12 +1221,27 @@ function renderMasterVolume(){
         <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"締切 時":"Deadline hour"}</label><input id="mv_h_${r.id}" inputmode="numeric" value="${r.deadline_hour!=null?r.deadline_hour:""}" placeholder="0-23"></div>
         <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"締切 分":"Deadline min"}</label><input id="mv_m_${r.id}" inputmode="numeric" value="${r.deadline_minute!=null?r.deadline_minute:""}" placeholder="0-59"></div>
       </div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"平均":"Avg"}</label><input id="mv_avg_${r.id}" inputmode="numeric" value="${r.avg_value!=null?r.avg_value:""}"></div>
-        <div style="flex:1"><label style="font-size:12px;color:#b45309;font-weight:normal">${lang==="ja"?"注意":"Warn"}</label><input id="mv_warn_${r.id}" inputmode="numeric" value="${r.warn_value!=null?r.warn_value:""}"></div>
-        <div style="flex:1"><label style="font-size:12px;color:#b91c1c;font-weight:normal">${lang==="ja"?"警告":"Alert"}</label><input id="mv_alert_${r.id}" inputmode="numeric" value="${r.alert_value!=null?r.alert_value:""}"></div>
+      <div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px">
+        <p class="hint" style="margin:0 0 6px">${lang==="ja"?"処理能力の自動計算に使う値（調査後に入力してください）":"Used for automatic capacity calculation (enter after investigation)"}</p>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"生産性（件/時間/人）":"Productivity (items/hr/person)"}</label><input id="mv_prod_${r.id}" inputmode="decimal" value="${r.productivity!=null?r.productivity:""}"></div>
+          <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"実働時間":"Work hours"}</label><input id="mv_wh_${r.id}" inputmode="decimal" value="${r.work_hours!=null?r.work_hours:""}"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <div style="flex:1"><label style="font-size:12px;color:#b45309;font-weight:normal">${lang==="ja"?"注意（負荷率 %）":"Caution (load %)"}</label><input id="mv_wr_${r.id}" inputmode="numeric" value="${r.warn_ratio!=null?Math.round(r.warn_ratio*100):""}" placeholder="例 80"></div>
+          <div style="flex:1"><label style="font-size:12px;color:#b91c1c;font-weight:normal">${lang==="ja"?"警告（負荷率 %）":"Alert (load %)"}</label><input id="mv_ar_${r.id}" inputmode="numeric" value="${r.alert_ratio!=null?Math.round(r.alert_ratio*100):""}" placeholder="例 100"></div>
+        </div>
       </div>
-      <button class="btn small ghost" style="width:100%;margin-top:8px" onclick="masterVolSave(${r.id})">${lang==="ja"?"この場所を保存":"Save this row"}</button>
+      <div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px">
+        <p class="hint" style="margin:0 0 6px">${lang==="ja"?"件数だけで判定したい場合（生産性・実働時間が未設定の時に使われます）":"Used when productivity/work hours are not set (judged by count only)"}</p>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"平均":"Avg"}</label><input id="mv_avg_${r.id}" inputmode="numeric" value="${r.avg_value!=null?r.avg_value:""}"></div>
+          <div style="flex:1"><label style="font-size:12px;color:#b45309;font-weight:normal">${lang==="ja"?"注意":"Warn"}</label><input id="mv_warn_${r.id}" inputmode="numeric" value="${r.warn_value!=null?r.warn_value:""}"></div>
+          <div style="flex:1"><label style="font-size:12px;color:#b91c1c;font-weight:normal">${lang==="ja"?"警告":"Alert"}</label><input id="mv_alert_${r.id}" inputmode="numeric" value="${r.alert_value!=null?r.alert_value:""}"></div>
+        </div>
+      </div>
+      <button class="btn small ghost" style="width:100%;margin-top:10px" onclick="masterVolSave(${r.id})">${lang==="ja"?"この場所を保存":"Save this row"}</button>
+      <button class="btn small" style="width:100%;margin-top:8px;background:#7c3aed;color:#fff" onclick="go('volshift',{volId:${r.id}})">👥 ${lang==="ja"?"出勤予定人数（シフト）を編集":"Edit planned headcount (shift)"}</button>
     </div>`;
   app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
     <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -1176,6 +1260,68 @@ function renderMasterVolume(){
     <p class="hint" style="margin-top:8px">${lang==="ja"?"入力値が「注意」以上で黄色、「警告」以上で赤色になります。各項目を直したら「この場所を保存」を押してください。":"Values at or above Warn turn yellow; at or above Alert turn red. Press save after editing."}</p>
     <div style="margin-top:10px">${vol.length?vol.map(rowHtml).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
   </div>`+tabbar();
+}
+let vsOffset=0; // 0=今月の締め(21日〜翌月20日), -1=1つ前の期間, 1=1つ後の期間
+function volShiftPeriod(offset){
+  const n=new Date();
+  let y=n.getFullYear(), m=n.getMonth(); // 0-indexed month
+  if(n.getDate()<21) m-=1; // まだ21日前なら、現在の期間は「前月21日〜今月20日」
+  m+=offset;
+  const startY=y+Math.floor(m/12), startM=((m%12)+12)%12;
+  const start=new Date(startY,startM,21);
+  const end=new Date(startY,startM+1,20);
+  const days=[];
+  const d=new Date(start);
+  while(d<=end){ days.push(new Date(d)); d.setDate(d.getDate()+1); }
+  return days;
+}
+let vsLastVolId=null;
+function renderVolShift(volId){
+  const r=vol.find(x=>x.id===volId);
+  if(!r){ go("master"); return; }
+  if(vsLastVolId!==volId){ vsOffset=0; vsLastVolId=volId; }
+  const days=volShiftPeriod(vsOffset);
+  const periodLabel=`${days[0].getMonth()+1}/${days[0].getDate()} 〜 ${days[days.length-1].getMonth()+1}/${days[days.length-1].getDate()}`;
+  const getH=ds=>{ const row=volShift.find(s=>s.volume_id===volId && s.shift_date===ds); return row?row.headcount:""; };
+  const dow=["日","月","火","水","木","金","土"];
+  const rowsHtml=days.map(d=>{
+    const ds=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
+    const isWk=d.getDay()===0||d.getDay()===6;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+      <div style="width:70px;font-size:14px;${isWk?"color:#dc2626":"color:#1e293b"}">${d.getMonth()+1}/${d.getDate()}（${dow[d.getDay()]}）</div>
+      <input id="vs_${ds}" inputmode="numeric" value="${getH(ds)}" placeholder="0" style="flex:1;text-align:center" ${(isViewOnly||isDestOnly)?"disabled":""}>
+      <span style="font-size:13px;color:#64748b">${lang==="ja"?"名":"ppl"}</span>
+    </div>`;
+  }).join("");
+  app.innerHTML=topbar()+header((lang==="ja"?"出勤予定人数：":"Planned headcount: ")+esc(r.label),"go('master')")+`<div class="pad" style="padding-bottom:110px">
+    <div class="panel" style="background:#f5f3ff;border:none;color:#5b21b6;text-align:center;display:flex;align-items:center;justify-content:space-between">
+      <button class="chip" onclick="vsOffset--;renderVolShift(${volId})">‹</button>
+      <b>${periodLabel}</b>
+      <button class="chip" onclick="vsOffset++;renderVolShift(${volId})">›</button>
+    </div>
+    <p class="hint">${lang==="ja"?"日付ごとに出勤予定人数を入力してください。物量入力画面の「実出勤」計算に使われます。":"Enter the planned headcount for each day. Used to calculate actual attendance on the volume input screen."}</p>
+    <div style="margin-top:6px">${rowsHtml}</div>
+  </div>
+  <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
+    <button class="btn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="saveVolShift(${volId})">✔ ${lang==="ja"?"保存する":"Save"}</button>
+  </div>`;
+}
+async function saveVolShift(volId){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  const days=volShiftPeriod(vsOffset);
+  const rows=days.map(d=>{
+    const ds=d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
+    const el=document.getElementById("vs_"+ds);
+    const v=el&&el.value.trim()!==""?parseInt(el.value):null;
+    return {ds,v};
+  }).filter(x=>x.v!=null);
+  if(!rows.length){ toast(lang==="ja"?"保存しました":"Saved"); go("master"); return; }
+  const payload=rows.map(x=>({volume_id:volId, shift_date:x.ds, headcount:x.v, updated_at:new Date().toISOString()}));
+  const {error}=await sb.from("volume_shift").upsert(payload,{onConflict:"volume_id,shift_date"});
+  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); console.error(error); return; }
+  toast(lang==="ja"?"保存しました":"Saved");
+  await loadVol();
+  go("master");
 }
 async function masterVolAdd(){
   const el=document.getElementById("mvNew"); const v=el.value.trim(); if(!v) return;
@@ -1201,11 +1347,15 @@ async function masterVolMove(i,dir){
 }
 async function masterVolSave(id){
   const g=k=>{ const el=document.getElementById(k+"_"+id); if(!el) return null; const s=el.value.trim(); return s===""?null:parseInt(s); };
+  const gf=k=>{ const el=document.getElementById(k+"_"+id); if(!el) return null; const s=el.value.trim(); return s===""?null:parseFloat(s); };
+  const gPct=k=>{ const el=document.getElementById(k+"_"+id); if(!el) return null; const s=el.value.trim(); return s===""?null:(parseFloat(s)/100); };
   const label=document.getElementById("mv_label_"+id).value.trim();
   const payload={
     label: label||undefined,
     deadline_hour:g("mv_h"), deadline_minute:g("mv_m"),
-    avg_value:g("mv_avg"), warn_value:g("mv_warn"), alert_value:g("mv_alert")
+    avg_value:g("mv_avg"), warn_value:g("mv_warn"), alert_value:g("mv_alert"),
+    productivity:gf("mv_prod"), work_hours:gf("mv_wh"),
+    warn_ratio:gPct("mv_wr"), alert_ratio:gPct("mv_ar")
   };
   if(!label){ toast(lang==="ja"?"名前を入力してください":"Name is required"); return; }
   const {error}=await sb.from("volume_shipment").update(payload).eq("id",id);
@@ -1266,35 +1416,4 @@ async function masterUpload(){
   if(!confirm(lang==="ja"?"この端末のマスタ（トラック・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
   const kinds=["truck","dest","course_dc1","course_dc3","oki_chi"]; let added=0;
   for(const k of kinds){
-    let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+k)||"[]"); }catch(e){}
-    const existing=new Set(getMaster(k));
-    let so=(masterRows[k]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order),0);
-    const rows=[];
-    local.forEach(v=>{ if(v && !existing.has(v)){ so++; rows.push({kind:k,value:v,sort_order:so}); existing.add(v); } });
-    if(rows.length){ const {error}=await sb.from("master_items").insert(rows); if(!error) added+=rows.length; }
-  }
-  await loadMaster();
-  toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
-}
-
-/* ---------- 設定 ---------- */
-function renderSettings(){
-  app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
-    <div class="panel"><b>🌐 ${t().language}</b>
-      <div style="display:flex;gap:10px;margin-top:10px">
-        <button class="btn small" style="flex:1;${lang==="ja"?"":"background:#f1f5f9;color:#475569"}" onclick="setLang('ja')">日本語</button>
-        <button class="btn small" style="flex:1;${lang==="en"?"":"background:#f1f5f9;color:#475569"}" onclick="setLang('en')">English</button>
-      </div></div>
-    <button class="btn ghost" onclick="logout()">${t().logout}</button>
-  </div>`+tabbar();
-}
-function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
-
-/* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore});
-window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
-
-start();
-</script>
-</body>
-</html>
+    let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+
