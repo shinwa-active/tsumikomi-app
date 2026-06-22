@@ -690,7 +690,7 @@ async function recordCard(r){
   return `<button class="card" onclick="go('detail',{id:'${r.id}'})">${thumb}
     <div style="min-width:0;flex:1">
       <div style="display:flex;align-items:center;gap:4px">${badgesNoConf(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span>${destConfirmedBadge}</div>
-      <div style="font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${destLabel}</div>
+      <div style="font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${destLabel}</div>
       <div style="color:#64748b;font-size:14px">${esc(r.truck||t().noTruck)}</div>
       <div style="color:#64748b;font-size:14px">${t().by(esc(maskName(r.worker_name||"")),r.pallets||0)}</div>
     </div></button>`;
