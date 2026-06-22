@@ -330,9 +330,18 @@ function normalizeCourseCode(s){
 }
 
 /* ---- 今日の直積みに変更コース ---- */
-let directLoadCourses=[]; // [{id, code, added_date}]
+let directLoadCourses=[]; // [{id, code, added_date, location}]
 function todayDirectLoadCourses(){ return directLoadCourses.filter(r=>r.added_date===todayStr()); }
-function isDirectLoadCode(code){ return todayDirectLoadCourses().some(r=>r.code===normalizeCourseCode(code)); }
+function isDirectLoadCode(code){
+  // 全体向け（location=null）のエントリが存在する場合は完全ブロック
+  const nc=normalizeCourseCode(code);
+  return todayDirectLoadCourses().some(r=>r.code===nc && !r.location);
+}
+function isPartialDirectLoadCode(code){
+  // 一部の場所向け（location指定あり）のエントリが存在する場合は注意喚起
+  const nc=normalizeCourseCode(code);
+  return todayDirectLoadCourses().filter(r=>r.code===nc && r.location);
+}
 async function loadDirectLoad(){
   const {data,error}=await sb.from("direct_load_courses").select("*").order("added_at",{ascending:true});
   if(error){ console.error(error); return; }
@@ -342,10 +351,12 @@ async function loadDirectLoad(){
 async function addDirectLoadCourse(){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const el=document.getElementById("dlcInput"); if(!el) return;
+  const locEl=document.getElementById("dlcLocation");
   const raw=el.value.trim(); if(!raw) return;
   const v=normalizeCourseCode(raw);
-  if(isDirectLoadCode(v)){ el.value=""; return; }
-  const {error}=await sb.from("direct_load_courses").insert({code:v,added_date:todayStr()});
+  const loc=locEl ? locEl.value.trim() : "";
+  if(directLoadCourses.some(r=>r.added_date===todayStr()&&r.code===v&&(r.location||"")===(loc||""))) { el.value=""; return; }
+  const {error}=await sb.from("direct_load_courses").insert({code:v,added_date:todayStr(),location:loc||null});
   if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
   el.value="";
   await loadDirectLoad();
@@ -361,6 +372,7 @@ async function delDirectLoadCourse(id){
 let vol=[];
 function volTodayVal(r){ return r.updated_date===todayStr() ? r.today_value : null; }
 function volTodayOk(r){ return r.updated_date===todayStr() ? !!r.today_ok : false; }
+function volTodaySupport(r){ return r.updated_date===todayStr() ? !!r.today_support : false; }
 function volTodayAttend(r){ return r.today_absent_date===todayStr() ? (r.today_absent||null) : null; }
 function volCapacity(r){
   const actual=volTodayAttend(r);
@@ -402,13 +414,14 @@ async function volSave(){
   const rows=vol.map(r=>{
     const inp=document.getElementById("vv_"+r.id);
     const chk=document.getElementById("vc_"+r.id);
+    const sup=document.getElementById("vs_"+r.id);
     const at=document.getElementById("va_"+r.id);
     const val=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
     const attend=at&&at.value.trim()!==""?parseInt(at.value):null;
-    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false, today_attend:attend};
+    return {id:r.id, today_value:val, today_ok:chk?chk.checked:false, today_support:sup?sup.checked:false, today_attend:attend};
   });
   for(const row of rows){
-    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_absent:row.today_attend,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
+    await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_support:row.today_support,today_absent:row.today_attend,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
   }
   toast(lang==="ja"?"物量を保存しました":"Saved");
   await loadVol();
@@ -418,18 +431,34 @@ async function volSave(){
 function renderDirectLoad(){
   const today=todayDirectLoadCourses();
   const voNote=(isViewOnly||isDestOnly)?"opacity:.5;pointer-events:none":"";
+  const chipStyle=(r)=>{
+    const base="background:#fee2e2;color:#991b1b;border:1px solid #fecaca";
+    const loc=r.location?`<span style="font-size:11px;background:#fecaca;border-radius:3px;padding:1px 4px;margin-left:4px">${esc(r.location)}</span>`:"";
+    return `<button class="chip" style="${base}" onclick="delDirectLoadCourse(${r.id})">${esc(r.code)}${loc} ×</button>`;
+  };
   const hasItems=today.length>0;
-  const chips=hasItems? today.map(r=>`<button class="chip" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="delDirectLoadCourse(${r.id})">${esc(r.code)} ×</button>`).join("") : "";
+  const chips=hasItems? today.map(chipStyle).join("") : "";
+  const DL_LOCATIONS=["シャーク","シロカ","ドリーム","パイオニア","アトム電器"];
+  const locOpts=DL_LOCATIONS.map(l=>`<option value="${esc(l)}">${esc(l)}</option>`).join("");
   return `<div class="panel" style="margin-top:8px;padding:${hasItems?"14px":"8px 14px"};background:#fff7ed;border:2px solid #fdba74">
     <div style="display:flex;align-items:center;gap:6px">
       <b style="color:#9a3412;font-size:${hasItems?"15px":"13px"}">⚠ ${lang==="ja"?"今日の 直積みに変更コース":"Today: changed to direct loading"}</b>
       ${hasItems?"":`<span class="hint" style="margin-left:auto">${lang==="ja"?"なし":"None"}</span>`}
     </div>
-    ${hasItems?`<p class="hint" style="margin-top:2px">${lang==="ja"?"ここに入れたコースは、横持ち登録画面で選べなくなります（今日だけ）。":"Courses entered here cannot be selected on the registration screen (today only)."}</p>
+    ${hasItems?`<p class="hint" style="margin-top:2px">${lang==="ja"?"全体：横持ち登録で選べなくなります。一部のみ：登録時に注意喚起が出ます。":"All: cannot select on registration. Partial: warning shown on registration."}</p>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chips}</div>`:""}
-    <div style="display:flex;gap:8px;margin-top:${hasItems?"8px":"6px"};${voNote}">
-      <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1;${hasItems?"":"padding:10px"}" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
-      <button class="btn small" style="padding:0 16px;background:#ea580c" onclick="addDirectLoadCourse()">＋ ${t().add}</button>
+    <div style="margin-top:${hasItems?"8px":"6px"};${voNote}">
+      <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+        <span style="font-size:12px;color:#92400e;white-space:nowrap">${lang==="ja"?"対象":"Target"}：</span>
+        <select id="dlcLocation" style="flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;font-size:14px">
+          <option value="">${lang==="ja"?"全て（完全ブロック）":"All (full block)"}</option>
+          ${locOpts}
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
+        <button class="btn small" style="padding:0 16px;background:#ea580c" onclick="addDirectLoadCourse()">＋ ${t().add}</button>
+      </div>
     </div>
   </div>`;
 }
@@ -459,17 +488,23 @@ function renderPallet(){
 function renderVolume(){
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569"><b>👁 ${lang==="ja"?"閲覧専用です。入力はできません。":"View only. Cannot input."}</b></div>`:"";
   const rowHtml=r=>{
-    const v=volTodayVal(r); const ok=volTodayOk(r); const attend=volTodayAttend(r);
+    const v=volTodayVal(r); const ok=volTodayOk(r); const sup=volTodaySupport(r); const attend=volTodayAttend(r);
     const dlText = r.deadline_hour!=null ? (lang==="ja"?`${r.deadline_hour}時${(r.deadline_minute||0)>0?(r.deadline_minute+"分"):""}までに入力`:`Enter by ${r.deadline_hour}:${("0"+(r.deadline_minute||0)).slice(-2)}`) : "";
     return `<div class="panel" style="margin-bottom:10px">
       <b style="font-size:16px">${esc(r.label)}</b>
       <input id="vv_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"出荷量":"Shipment qty"}" value="${v!=null?v:""}" style="margin-top:8px" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
       <label style="display:block;font-size:12px;color:#64748b;font-weight:normal;margin-top:8px">${lang==="ja"?"当日の出勤人数":"Attendance today"}</label>
       <input id="va_${r.id}" inputmode="numeric" placeholder="${lang==="ja"?"人数":"people"}" value="${attend!=null?attend:""}" ${(isViewOnly||isDestOnly)?"disabled":""} oninput="volRecalc(${r.id})">
-      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
-        <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${(isViewOnly||isDestOnly)?"disabled":""}>
-        <span style="font-size:14px">${lang==="ja"?"問題なし（塊出荷の為など）":"No issue (e.g. bulk shipment)"}</span>
-      </label>
+      <div style="display:flex;gap:16px;margin-top:8px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+          <input type="checkbox" id="vc_${r.id}" ${ok?"checked":""} style="width:20px;height:20px" ${(isViewOnly||isDestOnly)?"disabled":""}>
+          <span style="font-size:14px">${lang==="ja"?"問題なし（塊出荷の為など）":"No issue (e.g. bulk shipment)"}</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+          <input type="checkbox" id="vs_${r.id}" ${sup?"checked":""} style="width:20px;height:20px" ${(isViewOnly||isDestOnly)?"disabled":""} onchange="volRecalc(${r.id})">
+          <span style="font-size:14px;color:#0369a1">${lang==="ja"?"応援対応済み":"Support arranged"}</span>
+        </label>
+      </div>
       <div id="vcalc_${r.id}" style="margin-top:8px"></div>
       ${dlText?`<p class="hint" style="margin-top:6px">${dlText}</p>`:""}
     </div>`;
@@ -488,8 +523,10 @@ function volRecalc(id){
   const r=vol.find(x=>x.id===id); if(!r) return;
   const el=document.getElementById("vcalc_"+id); if(!el) return;
   const inp=document.getElementById("vv_"+id); const at=document.getElementById("va_"+id);
+  const supEl=document.getElementById("vs_"+id);
   const v=inp&&inp.value.trim()!==""?parseInt(inp.value):null;
   const attend=at&&at.value.trim()!==""?parseInt(at.value):null;
+  const supported=supEl&&supEl.checked;
   if(attend==null){
     el.innerHTML=`<p class="hint">${lang==="ja"?"出勤人数を入力すると、処理能力・負荷率が自動計算されます":"Enter attendance to auto-calculate capacity and load"}</p>`;
     return;
@@ -502,8 +539,12 @@ function volRecalc(id){
       const ratio=v/cap;
       const pct=Math.round(ratio*100);
       let stLabel=lang==="ja"?"正常":"OK", stColor="#15803d";
-      if(r.alert_ratio!=null && ratio>=r.alert_ratio){ stLabel=lang==="ja"?"警告":"Alert"; stColor="#b91c1c"; }
-      else if(r.warn_ratio!=null && ratio>=r.warn_ratio){ stLabel=lang==="ja"?"注意":"Caution"; stColor="#b45309"; }
+      if(!supported){
+        if(r.alert_ratio!=null && ratio>=r.alert_ratio){ stLabel=lang==="ja"?"警告":"Alert"; stColor="#b91c1c"; }
+        else if(r.warn_ratio!=null && ratio>=r.warn_ratio){ stLabel=lang==="ja"?"注意":"Caution"; stColor="#b45309"; }
+      } else if(r.alert_ratio!=null && ratio>=r.alert_ratio || r.warn_ratio!=null && ratio>=r.warn_ratio){
+        stLabel=lang==="ja"?"正常（応援対応済み）":"OK (support arranged)"; stColor="#15803d";
+      }
       html+=`<div style="margin-top:6px;font-size:13px;color:#475569">${lang==="ja"?"負荷率":"Load"}：<b style="color:${stColor}">${pct}%</b>　${lang==="ja"?"状態":"Status"}：<b style="color:${stColor}">${stLabel}</b></div>`;
     }
   } else {
@@ -628,10 +669,12 @@ function badges(r){
 async function recordCard(r){
   let thumb=`<div class="thumb"></div>`;
   if(r.photos&&r.photos.length){ const u=await urlFor(r.photos[0].storage_path); if(u) thumb=`<img class="thumb" src="${u}">`; }
+  const destLabel=r.dest_confirmed ? `<span style="color:#0f766e;font-weight:bold">✔ ${esc(r.destination||t().noDest)}</span>` : `<span style="color:#1e3a8a">${esc(r.destination||t().noDest)}</span>`;
   return `<button class="card" onclick="go('detail',{id:'${r.id}'})">${thumb}
     <div style="min-width:0;flex:1">
       <div>${badges(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span></div>
-      <div style="font-weight:bold">${esc(r.destination||t().noDest)}</div>
+      <div style="font-weight:bold;font-size:14px;color:#475569">${esc(r.oki_chi||"")}</div>
+      <div style="font-weight:bold">${destLabel}</div>
       <div style="color:#64748b;font-size:14px">${esc(r.truck||t().noTruck)}</div>
       <div style="color:#64748b;font-size:14px">${t().by(esc(maskName(r.worker_name||"")),r.pallets||0)}</div>
     </div></button>`;
@@ -701,7 +744,19 @@ async function render(){
           <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
           ${renderDirectLoad()}
           <div style="display:flex;gap:8px;margin-top:8px;align-items:stretch">
-            <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a;text-align:center;display:flex;flex-direction:column;justify-content:center"><div style="font-size:13px">${t().today}</div><div style="font-size:24px;font-weight:800">${todays.length}<span style="font-size:14px"> ${t().ken}</span></div></div>
+            <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a">
+              <div style="font-size:12px;font-weight:bold;margin-bottom:4px">${t().today}</div>
+              ${(()=>{
+                const dests=getMaster("dest");
+                if(!dests.length) return `<div style="font-size:22px;font-weight:800;text-align:center">${todays.length}<span style="font-size:13px"> ${t().ken}</span></div>`;
+                return dests.map(d=>{
+                  const total=todays.filter(r=>String(r.destination||"").split("、").includes(d)).length;
+                  const confirmed=todays.filter(r=>String(r.destination||"").split("、").includes(d)&&r.dest_confirmed).length;
+                  const color=total===0?"#94a3b8":confirmed===total?"#15803d":"#1e3a8a";
+                  return `<div style="display:flex;justify-content:space-between;font-size:13px;line-height:1.8"><span style="color:#475569">${esc(d)}</span><span style="font-weight:bold;color:${color}">${confirmed}/${total}${lang==="ja"?"件":""}</span></div>`;
+                }).join("");
+              })()}
+            </div>
             <button class="btn ghost" style="flex:1;margin:0;line-height:1.4" onclick="go('list')">📋 ${lang==="ja"?"横持ち済み<br>一覧を見る":"View all<br>records"}</button>
           </div>
           <button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
@@ -869,7 +924,9 @@ function drawCandidates(){
       ${arr.map((v,i)=>{
         const col=colorOf(key,v);
         const blocked=isDirectLoadCode(v);
+        const partials=isPartialDirectLoadCode(v);
         if(blocked) return `<button class="chip" disabled style="background:#fee2e2;border:1px solid #fecaca;color:#991b1b;text-decoration:line-through;opacity:.7" title="${lang==="ja"?"本日は直積みのため選べません":"Direct loading today, cannot select"}">${esc(v)}</button>`;
+        if(partials.length) return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:#fef9c3;border:2px solid #fbbf24;color:#92400e" title="${lang==="ja"?"一部の場所で本日は直積みです":"Partial direct loading today"}">${esc(v)} ⚠</button>`;
         return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;
       }).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -893,7 +950,17 @@ function drawCandidates(){
     if(el && _listScroll[k]) el.scrollTop=_listScroll[k];
   });
 }
-function addCand(key,i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster(key); const v=arr[i]; if(v==null) return; regCourses.push({code:v,pl:1,grp:key}); drawCourses(); }
+function addCand(key,i){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  const arr=getMaster(key); const v=arr[i]; if(v==null) return;
+  const partials=isPartialDirectLoadCode(v);
+  if(partials.length){
+    const locs=partials.map(r=>r.location).join("、");
+    const msg=lang==="ja"?`${v} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${v} is set to direct loading at ${locs} today.\n\nAdd anyway?`;
+    if(!confirm(msg)) return;
+  }
+  regCourses.push({code:v,pl:1,grp:key}); drawCourses();
+}
 function mixToggle(key){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); mix=(mix&&mix.key===key)?null:{key:key,picks:[]}; drawCandidates(); }
 function mixPick(key,i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix||mix.key!==key) return; const arr=getMaster(key); const v=arr[i]; if(v==null) return; mix.picks.push(v); drawCandidates(); }
 function mixRemove(idx){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!mix) return; mix.picks.splice(idx,1); drawCandidates(); }
@@ -1034,6 +1101,12 @@ function addCourseG(key){
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
+  const partials=isPartialDirectLoadCode(c);
+  if(partials.length){
+    const locs=partials.map(r=>r.location).join("、");
+    const msg=lang==="ja"?`${c} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading at ${locs} today.\n\nAdd anyway?`;
+    if(!confirm(msg)) return;
+  }
   if(mix && mix.key===key){
     mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return;
   }
