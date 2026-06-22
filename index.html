@@ -150,6 +150,42 @@ const ADMIN_EMAILS = ["y.katou@shinwa-active.co.jp","u100422@shinwa-active.co.jp
 let user = null;
 let records = [];
 let view = {name:"home"};
+
+/* ---- 操作ログ ---- */
+async function logActivity(action, targetTable, targetId, summary, beforeData, afterData){
+  try{
+    await sb.from("activity_logs").insert({
+      actor_email: (user&&user.email)?user.email:null,
+      action: action,
+      target_table: targetTable||null,
+      target_id: targetId!=null?String(targetId):null,
+      summary: summary||null,
+      before_data: beforeData||null,
+      after_data: afterData||null
+    });
+  }catch(e){ /* ログ失敗は本処理を止めない */ }
+}
+
+/* ---- 自動ログアウト(無操作60分) ---- */
+const IDLE_LIMIT_MS = 60*60*1000; // 60分
+let idleTimer = null;
+function resetIdleTimer(){
+  if(!user) return;
+  if(idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(idleLogout, IDLE_LIMIT_MS);
+}
+async function idleLogout(){
+  if(!user) return;
+  await logActivity("logout","auth",user.id,"自動ログアウト(無操作60分)",null,null);
+  await sb.auth.signOut();
+  user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; isAdminAllowed=false; pendingCompleteId=null;
+  if(idleTimer){ clearTimeout(idleTimer); idleTimer=null; }
+  renderLogin();
+  toast(lang==="ja"?"60分操作がなかったため自動ログアウトしました":"Auto logged out after 60 min of inactivity");
+}
+["click","keydown","touchstart","scroll"].forEach(ev=>{
+  document.addEventListener(ev,()=>{ if(user) resetIdleTimer(); }, {passive:true});
+});
 let signedCache = {};
 let pendingCompleteId = null;
 const app = document.getElementById("app");
@@ -218,9 +254,12 @@ async function urlFor(path){
 async function loadRecords(){
   const {data,error}=await sb.from("load_records").select("*, courses(*), photos(*)").order("created_at",{ascending:false});
   if(error){ console.error(error); return; }
-  records = data||[];
+  const all = data||[];
+  records = all.filter(r=>!r.deleted_at);
+  deletedRecords = all.filter(r=>r.deleted_at);
   render();
 }
+let deletedRecords=[];
 let yoku=[];
 function todayStr(){ const n=new Date(); return n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-"+("0"+n.getDate()).slice(-2); }
 function isWeekend(){ const d=new Date().getDay(); return d===0||d===6; }
@@ -603,9 +642,11 @@ async function doLogin(){
   const {error}=await sb.auth.signInWithPassword({email,password:pass});
   if(error){ msg.style.color="#dc2626"; msg.textContent=t().loginNg+error.message; return; }
   const {data}=await sb.auth.getSession(); user=data.session.user;
+  await logActivity("login","auth",user.id,"ログイン",null,null);
   await afterLogin();
 }
 async function afterLogin(){
+  resetIdleTimer();
   isViewOnly = !!(user && user.email && VIEW_ONLY_EMAILS.includes(user.email.toLowerCase()));
   isDestOnly = !!(user && user.email && DEST_ONLY_EMAILS.includes(user.email.toLowerCase()));
   isAdminAllowed = !!(user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
@@ -623,7 +664,7 @@ async function afterLogin(){
     .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol)
     .on("postgres_changes",{event:"*",schema:"public",table:"direct_load_courses"},loadDirectLoad).subscribe();
 }
-async function logout(){ await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; isAdminAllowed=false; pendingCompleteId=null; renderLogin(); }
+async function logout(){ if(user) await logActivity("logout","auth",user.id,"手動ログアウト",null,null); if(idleTimer){ clearTimeout(idleTimer); idleTimer=null; } await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; isAdminAllowed=false; pendingCompleteId=null; renderLogin(); }
 
 /* ===================== 画面描画 ===================== */
 function go(name,params){
@@ -1220,6 +1261,7 @@ async function saveRecord(){
     if(regCourses.length) await sb.from("courses").insert(regCourses.map(c=>({record_id:rec.id,code:c.code,pl:c.pl,checked:false})));
     if(a.length) await sb.from("anomaly_logs").insert(a.map(m=>({record_id:rec.id,type:"input",message:m})));
     await sb.from("notifications").insert({record_id:rec.id,message:`${dest||"-"} / ${truck||"-"} 登録`});
+    await logActivity("insert","load_records",rec.id,`${dest||"-"} / ${truck||"-"}`,null,{destination:dest,truck:truck,pallets:pallets});
     toast(t().saved);
     await loadRecords();
     pendingCompleteId=rec.id;
@@ -1285,7 +1327,8 @@ async function markComplete(id){
 }
 async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
-async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; await sb.from("load_records").delete().eq("id",id); await loadRecords(); go(role==="worker"?"list":"search"); }
+async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
+async function restoreRecord(id){ if(!isAdminAllowed) return; if(!confirm(lang==="ja"?"この記録を復元しますか？":"Restore this record?"))return; await sb.from("load_records").update({deleted_at:null,deleted_by:null}).eq("id",id); await logActivity("restore","load_records",id,"記録を復元",null,null); await loadRecords(); renderHistory(); toast(lang==="ja"?"復元しました":"Restored"); }
 
 /* ---------- ダッシュボード ---------- */
 function renderDashboard(){
@@ -1334,8 +1377,62 @@ function exportCsv(){
 }
 
 /* ---------- 履歴 ---------- */
-let hf={mode:"truck",picked:null};
+let hf={mode:"truck",picked:null,tab:"records"};
+function actionLabel(a){
+  const m={insert:"➕ 新規",update:"✏️ 修正",delete:"🗑 削除",restore:"♻️ 復元",login:"🔑 ログイン",logout:"🚪 ログアウト"};
+  if(lang!=="ja"){ const e={insert:"➕ Add",update:"✏️ Edit",delete:"🗑 Delete",restore:"♻️ Restore",login:"🔑 Login",logout:"🚪 Logout"}; return e[a]||a; }
+  return m[a]||a;
+}
+function actorShort(em){ return (em||"-").split("@")[0]; }
+async function renderActivityLog(){
+  const box=document.getElementById("logBox"); if(!box) return;
+  const {data,error}=await sb.from("activity_logs").select("*").order("created_at",{ascending:false}).limit(300);
+  if(error){ box.innerHTML=`<div class="err">${lang==="ja"?"ログを取得できませんでした":"Failed to load logs"}</div>`; return; }
+  const rows=data||[];
+  if(!rows.length){ box.innerHTML=`<div class="hint">${lang==="ja"?"まだ記録がありません":"No logs yet"}</div>`; return; }
+  box.innerHTML=rows.map(r=>`<div class="card" style="display:block">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b>${actionLabel(r.action)}</b>
+      <span class="hint">${r.target_table?esc(r.target_table):""}</span>
+      <span style="margin-left:auto;color:#94a3b8;font-size:12px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span>
+    </div>
+    ${r.summary?`<div style="margin-top:4px">${esc(r.summary)}</div>`:""}
+    <div class="hint" style="margin-top:4px">👤 ${esc(actorShort(r.actor_email))}</div>
+  </div>`).join("");
+}
+function renderDeletedList(){
+  const box=document.getElementById("delBox"); if(!box) return;
+  if(!deletedRecords.length){ box.innerHTML=`<div class="hint">${lang==="ja"?"削除された記録はありません":"No deleted records"}</div>`; return; }
+  box.innerHTML=deletedRecords.map(r=>`<div class="card" style="display:block">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <b>${esc(r.destination||"-")}</b><span class="hint">/ ${esc(r.truck||"-")}</span>
+      <span style="margin-left:auto;color:#94a3b8;font-size:12px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span>
+    </div>
+    <div class="hint" style="margin-top:4px">🗑 ${esc(actorShort(r.deleted_by))} ・ ${dayLabel(r.deleted_at)} ${hhmm(r.deleted_at)}</div>
+    <button class="btn small green" style="margin-top:8px;width:100%" onclick="restoreRecord('${r.id}')">♻️ ${lang==="ja"?"復元する":"Restore"}</button>
+  </div>`).join("");
+}
 function renderHistory(){
+  const subBtn=(k,label)=>`<button class="btn small" style="flex:1;${hf.tab===k?"":"background:#f1f5f9;color:#475569"}" onclick="hf.tab='${k}';hf.picked=null;renderHistory()">${label}</button>`;
+  const adminTabs=isAdminAllowed?`<div style="display:flex;gap:8px;margin-bottom:12px">
+      ${subBtn("records","📋 "+(lang==="ja"?"積込履歴":"Loads"))}
+      ${subBtn("log","📝 "+(lang==="ja"?"操作ログ":"Logs"))}
+      ${subBtn("deleted","🗑 "+(lang==="ja"?"削除済み":"Deleted"))}
+    </div>`:"";
+
+  if(hf.tab==="log" && isAdminAllowed){
+    app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">${adminTabs}
+      <p class="hint">${lang==="ja"?"誰がいつ何を操作したかの記録です（最新300件）":"Who did what and when (latest 300)"}</p>
+      <div id="logBox">${t().loading}</div></div>`+tabbar();
+    renderActivityLog(); return;
+  }
+  if(hf.tab==="deleted" && isAdminAllowed){
+    app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">${adminTabs}
+      <p class="hint">${lang==="ja"?"削除された積込記録です。復元できます。":"Deleted load records. Can be restored."}</p>
+      <div id="delBox"></div></div>`+tabbar();
+    renderDeletedList(); return;
+  }
+
   const list=hf.mode==="truck"?suggest("truck"):suggest("dest");
   let inner;
   if(!hf.picked){
@@ -1345,7 +1442,7 @@ function renderHistory(){
     inner=`<button class="chip" onclick="hf.picked=null;renderHistory()">‹ ${t().back}</button><div style="font-weight:bold;font-size:18px;margin:8px 0">${esc(hf.picked)}</div><div class="hint">${t().loadings(res.length)}</div><div id="hres">${t().loading}</div>`;
     listHtml(res).then(h=>{const e=document.getElementById("hres");if(e)e.innerHTML=h;});
   }
-  app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">
+  app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">${adminTabs}
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn small" style="flex:1;${hf.mode==="truck"?"":"background:#f1f5f9;color:#475569"}" onclick="hf.mode='truck';hf.picked=null;renderHistory()">🚚 ${t().byTruck}</button>
       <button class="btn small" style="flex:1;${hf.mode==="dest"?"":"background:#f1f5f9;color:#475569"}" onclick="hf.mode='dest';hf.picked=null;renderHistory()">📦 ${t().byDest}</button>
@@ -1538,13 +1635,16 @@ async function masterColor(i,key){
   row.color=key; renderMaster();
 }
 async function masterEdit(i){ const row=(masterRows[mf.mode]||[])[i]; if(!row) return; const v=prompt(t().mSave,row.value); if(!v||!v.trim()) return;
+  const oldVal=row.value;
   const {error}=await sb.from("master_items").update({value:v.trim()}).eq("id",row.id);
   if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  await logActivity("update","master_items",row.id,`マスタ修正(${mf.mode})`,{value:oldVal},{value:v.trim()});
   row.value=v.trim(); renderMaster();
 }
 async function masterDel(i){ if(!confirm(t().mDelQ))return; const row=(masterRows[mf.mode]||[])[i]; if(!row) return;
   const {error}=await sb.from("master_items").delete().eq("id",row.id);
   if(error){ toast(lang==="ja"?"削除に失敗しました":"Delete failed"); return; }
+  await logActivity("delete","master_items",row.id,`マスタ削除(${mf.mode}): ${row.value}`,{value:row.value},null);
   masterRows[mf.mode].splice(i,1); renderMaster();
 }
 async function masterUpload(){
@@ -1576,7 +1676,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 
 start();
