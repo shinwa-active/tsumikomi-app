@@ -395,13 +395,15 @@ function volStatus(r){
   if(v==null){ return volDeadlinePassed(r) ? "missing" : "none"; }
   if(volTodayOk(r)) return "ok";
   const ratio=volLoadRatio(r);
-  if(ratio!=null && r.alert_ratio!=null && ratio>=r.alert_ratio) return "alert";
-  if(ratio!=null && r.warn_ratio!=null && ratio>=r.warn_ratio) return "warn";
-  if(ratio==null){
-    if(r.alert_value!=null && v>=r.alert_value) return "alert";
-    if(r.warn_value!=null && v>=r.warn_value) return "warn";
+  let base="ok";
+  if(ratio!=null && r.alert_ratio!=null && ratio>=r.alert_ratio) base="alert";
+  else if(ratio!=null && r.warn_ratio!=null && ratio>=r.warn_ratio) base="warn";
+  else if(ratio==null){
+    if(r.alert_value!=null && v>=r.alert_value) base="alert";
+    else if(r.warn_value!=null && v>=r.warn_value) base="warn";
   }
-  return "ok";
+  if((base==="alert"||base==="warn") && volTodaySupport(r)) return "support";
+  return base;
 }
 async function loadVol(){
   const {data,error}=await sb.from("volume_shipment").select("*").order("sort_order",{ascending:true});
@@ -719,6 +721,7 @@ async function render(){
       none:{color:"#94a3b8",bg:"#f8fafc",bd:"#e2e8f0",icon:"⬜",label:lang==="ja"?"未入力":"No input"},
       missing:{color:"#1e3a8a",bg:"#eef2ff",bd:"#1e3a8a",icon:"📝",label:lang==="ja"?"入力してください":"Please enter"},
       ok:{color:"#15803d",bg:"#f0fdf4",bd:"#bbf7d0",icon:"✅",label:lang==="ja"?"正常":"OK"},
+      support:{color:"#15803d",bg:"#f0fdf4",bd:"#bbf7d0",icon:"✅",label:lang==="ja"?"正常（応援対応済み）":"OK (support arranged)"},
       warn:{color:"#b45309",bg:"#fffbeb",bd:"#fde68a",icon:"🟡",label:lang==="ja"?"注意":"Caution"},
       alert:{color:"#b91c1c",bg:"#fef2f2",bd:"#fecaca",icon:"🔴",label:lang==="ja"?"警告":"Alert"}
     };
