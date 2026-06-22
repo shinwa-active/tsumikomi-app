@@ -663,9 +663,18 @@ function enterAdmin(){
 
 function badges(r){
   let h="";
-  h+= r.completed?`<span class="badge b-green">${t().done}</span>`:`<span class="badge b-amber">${t().pending}</span>`;
+  const dc2=r.oki_chi?"DC2":"";
+  const statusColor=r.completed?"b-green":"b-amber";
+  const statusLabel=r.completed?t().done:t().pending;
+  if(dc2){
+    h+=`<span class="badge ${statusColor}" style="display:inline-flex;flex-direction:column;align-items:center;line-height:1.2;padding:3px 8px">
+      <span style="font-size:11px;font-weight:bold">${dc2}</span>
+      <span style="font-size:11px">${statusLabel}</span>
+    </span>`;
+  } else {
+    h+=`<span class="badge ${statusColor}">${statusLabel}</span>`;
+  }
   if(r.dest_confirmed) h+=` <span class="badge b-teal">${t().destShort}</span>`;
-  if(r.anomaly_logs&&false){} // anomalies shown via flag below
   return h;
 }
 async function recordCard(r){
@@ -675,7 +684,6 @@ async function recordCard(r){
   return `<button class="card" onclick="go('detail',{id:'${r.id}'})">${thumb}
     <div style="min-width:0;flex:1">
       <div>${badges(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span></div>
-      <div style="font-weight:bold;font-size:14px;color:#475569">${r.oki_chi?"DC2":""}</div>
       <div style="font-weight:bold">${destLabel}</div>
       <div style="color:#64748b;font-size:14px">${esc(r.truck||t().noTruck)}</div>
       <div style="color:#64748b;font-size:14px">${t().by(esc(maskName(r.worker_name||"")),r.pallets||0)}</div>
