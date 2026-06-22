@@ -661,7 +661,7 @@ function enterAdmin(){
   role="admin"; go("dashboard");
 }
 
-function badges(r){
+function badgesNoConf(r){
   let h="";
   const dc2=r.oki_chi?"DC2":"";
   const statusColor=r.completed?"b-green":"b-amber";
@@ -674,17 +674,23 @@ function badges(r){
   } else {
     h+=`<span class="badge ${statusColor}">${statusLabel}</span>`;
   }
-  if(r.dest_confirmed) h+=` <span class="badge b-teal">${t().destShort}</span>`;
   return h;
 }
+function badges(r){ return badgesNoConf(r)+(r.dest_confirmed?` <span class="badge b-teal">${t().destShort}</span>`:""); }
 async function recordCard(r){
   let thumb=`<div class="thumb"></div>`;
   if(r.photos&&r.photos.length){ const u=await urlFor(r.photos[0].storage_path); if(u) thumb=`<img class="thumb" src="${u}">`; }
-  const destLabel=r.dest_confirmed ? `<span style="color:#0f766e;font-weight:bold">✔ ${esc(r.destination||t().noDest)}</span>` : `<span style="color:#1e3a8a">${esc(r.destination||t().noDest)}</span>`;
+  const dests=(r.destination||"").split("、").filter(Boolean);
+  const destFirst=dests[0]||t().noDest;
+  const destMore=dests.length>1?`<span style="color:#94a3b8">… +${dests.length-1}</span>`:"";
+  const destLabel=r.dest_confirmed
+    ? `<span style="color:#0f766e;font-weight:bold">✔ ${esc(destFirst)}</span>${destMore}`
+    : `<span style="color:#1e3a8a">${esc(destFirst)}</span>${destMore}`;
+  const destConfirmedBadge=r.dest_confirmed?`<span class="badge b-teal" style="margin-left:auto">${t().destShort}</span>`:"";
   return `<button class="card" onclick="go('detail',{id:'${r.id}'})">${thumb}
     <div style="min-width:0;flex:1">
-      <div>${badges(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span></div>
-      <div style="font-weight:bold">${destLabel}</div>
+      <div style="display:flex;align-items:center;gap:4px">${badgesNoConf(r)} <span style="color:#94a3b8;font-size:13px">${dayLabel(r.created_at)} ${hhmm(r.created_at)}</span>${destConfirmedBadge}</div>
+      <div style="font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${destLabel}</div>
       <div style="color:#64748b;font-size:14px">${esc(r.truck||t().noTruck)}</div>
       <div style="color:#64748b;font-size:14px">${t().by(esc(maskName(r.worker_name||"")),r.pallets||0)}</div>
     </div></button>`;
