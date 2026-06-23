@@ -665,9 +665,19 @@ async function doLogin(){
 }
 async function afterLogin(){
   resetIdleTimer();
-  isViewOnly = !!(user && user.email && VIEW_ONLY_EMAILS.includes(user.email.toLowerCase()));
-  isDestOnly = !!(user && user.email && DEST_ONLY_EMAILS.includes(user.email.toLowerCase()));
-  isAdminAllowed = !!(user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
+  // DBのuser_rolesテーブルからロールを取得（DB側で強制）
+  try{
+    const { data: roleRow } = await sb.from('user_roles').select('role').eq('email', user.email.toLowerCase()).maybeSingle();
+    const dbRole = roleRow?.role || 'worker';
+    isViewOnly    = dbRole === 'view_only';
+    isDestOnly    = dbRole === 'dest_only';
+    isAdminAllowed = dbRole === 'admin';
+  } catch(e){
+    // user_rolesテーブルがまだない場合は従来のメール配列で判定（移行期の保険）
+    isViewOnly    = !!(user && user.email && VIEW_ONLY_EMAILS.includes(user.email.toLowerCase()));
+    isDestOnly    = !!(user && user.email && DEST_ONLY_EMAILS.includes(user.email.toLowerCase()));
+    isAdminAllowed = !!(user && user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
+  }
   await loadRecords();
   await loadYoko();
   await loadPal();
@@ -895,7 +905,7 @@ function renderRegister(){
     <input id="file" type="file" accept="image/*" capture="environment" multiple style="display:none">
     <button class="btn ghost" style="margin-top:8px" onclick="document.getElementById('file').click()">📷 ${t().take}</button>
 
-    <label>${t().fComment}</label><input id="comment" placeholder="${t().phComment}">
+    <label>${t().fComment}</label><input id="comment" placeholder="${t().phComment}" maxlength="200">
     <div id="anom"></div>
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
@@ -1141,7 +1151,28 @@ function pickTruck(v){
   inp.value = (inp.value===v) ? "" : v;
   drawTruck(); drawCandidates(); updateAnom();
 }
-function onFiles(e){ if(isViewOnly||isDestOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
+function onFiles(e){
+  if(isViewOnly||isDestOnly){ viewOnlyBlock(); e.target.value=""; return; }
+  const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+  const ALLOWED_TYPES = ['image/jpeg','image/png','image/webp','image/heic','image/heif'];
+  const candidates = [...e.target.files];
+  const valid = [];
+  for(const f of candidates){
+    if(!ALLOWED_TYPES.includes(f.type.toLowerCase()) && !f.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|heic|heif)$/)){
+      toast(lang==="ja"?`「${f.name}」は画像ファイルではありません`:`"${f.name}" is not an image file`);
+      continue;
+    }
+    if(f.size > MAX_BYTES){
+      toast(lang==="ja"?`「${f.name}」が10MBを超えています（${(f.size/1024/1024).toFixed(1)}MB）`:`"${f.name}" exceeds 10MB (${(f.size/1024/1024).toFixed(1)}MB)`);
+      continue;
+    }
+    valid.push(f);
+  }
+  const take = valid.slice(0, 3 - regPhotos.length);
+  take.forEach(f=>regPhotos.push(f));
+  e.target.value="";
+  drawPhotos(); updateAnom();
+}
 function drawPhotos(){
   const a=document.getElementById("photoArea");
   a.innerHTML=regPhotos.map((f,i)=>`<div style="position:relative"><img class="thumb" style="width:80px;height:80px" src="${URL.createObjectURL(f)}"><button onclick="regPhotos.splice(${i},1);drawPhotos();updateAnom()" style="position:absolute;top:-8px;right:-8px;background:#dc2626;color:#fff;border:none;border-radius:999px;width:24px;height:24px">×</button></div>`).join("");
@@ -2154,8 +2185,89 @@ function masterModeLabel(m){
   if(m==="course_dc1_1f") return (lang==="ja"?"DC1 1F行き コース記号":"DC1 1F course code");
   return (lang==="ja"?"DC1行き コース記号":"DC1 course code");
 }
+/* ===== ユーザー管理 ===== */
+let userRolesList=[];
+async function loadUserRoles(){
+  const {data,error}=await sb.from("user_roles").select("*").order("role").order("email");
+  if(!error) userRolesList=data||[];
+}
+async function renderUserMgmt(){
+  await loadUserRoles();
+  const roleColors={admin:"#1e3a5f",worker:"#059669",view_only:"#7c3aed",dest_only:"#d97706"};
+  const roleLabels={admin:"管理者",worker:"現場",view_only:"閲覧専用",dest_only:"納品先確認"};
+  const roleOptions=Object.entries(roleLabels).map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
+  const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
+  const userRows=userRolesList.map(u=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:bold;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email)}</div>
+        <div style="font-size:12px;color:#64748b">${esc(u.note||"")}</div>
+      </div>
+      <span style="background:${roleColors[u.role]||"#64748b"};color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:bold;white-space:nowrap">${roleLabels[u.role]||u.role}</span>
+      <button class="btn small" style="padding:4px 10px" onclick="editUserRole(${u.id},'${esc(u.email)}','${u.role}','${esc(u.note||"")}')">✏️</button>
+      <button class="btn small" style="padding:4px 10px;background:#fef2f2;color:#dc2626" onclick="deleteUserRole(${u.id},'${esc(u.email)}')">🗑</button>
+    </div>`).join("");
+  app.innerHTML=topbar()+header(lang==="ja"?"ユーザー管理":"User Management")+`<div class="pad">
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("course_dc3",t().candTitle3)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー管理":"Users"))}
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:12px">
+      ${userRows||`<div class="hint" style="padding:16px;text-align:center">${lang==="ja"?"まだ登録がありません":"No users registered"}</div>`}
+    </div>
+    <div class="panel">
+      <b style="color:#1e3a5f">➕ ${lang==="ja"?"ユーザーを追加":"Add user"}</b>
+      <input id="uEmail" placeholder="${lang==="ja"?"メールアドレス（@前のみ）":"Email (ID part only)"}" style="margin-top:8px" maxlength="50">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <select id="uRole" style="flex:1">${roleOptions}</select>
+        <input id="uNote" placeholder="${lang==="ja"?"メモ（任意）":"Note (optional)"}" style="flex:2" maxlength="50">
+      </div>
+      <button class="btn green" style="width:100%;margin-top:8px" onclick="addUserRole()">💾 ${lang==="ja"?"追加":"Add"}</button>
+    </div>
+    <p class="hint">${lang==="ja"?"ここで設定したロールが、データベース側で実際のアクセス制限に使われます。":"Roles set here are enforced at the database level."}</p>
+  </div>`+tabbar();
+}
+async function addUserRole(){
+  const idPart=document.getElementById("uEmail").value.trim().toLowerCase().replace(/@.*$/,"");
+  const email=idPart?idPart+"@shinwa-active.co.jp":"";
+  const role=document.getElementById("uRole").value;
+  const note=document.getElementById("uNote").value.trim();
+  if(!email){ toast(lang==="ja"?"メールIDを入力してください":"Enter email ID"); return; }
+  const {error}=await sb.from("user_roles").upsert({email,role,note,updated_at:new Date().toISOString()},{onConflict:"email"});
+  if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
+  await logActivity("update","user_roles",null,`${email} → ${role}`,null,{role});
+  toast(lang==="ja"?"保存しました":"Saved");
+  renderUserMgmt();
+}
+async function editUserRole(id,email,currentRole,currentNote){
+  const roleLabels={admin:"管理者",worker:"現場",view_only:"閲覧専用",dest_only:"納品先確認"};
+  const newRole=prompt(lang==="ja"?`${email}\n現在: ${roleLabels[currentRole]||currentRole}\n\n新しいロールを入力（admin/worker/view_only/dest_only）`:`${email}\nCurrent: ${currentRole}\n\nEnter new role:`, currentRole);
+  if(!newRole||!["admin","worker","view_only","dest_only"].includes(newRole.trim())){ toast(lang==="ja"?"無効なロールです":"Invalid role"); return; }
+  const newNote=prompt(lang==="ja"?"メモ（任意）":"Note (optional):", currentNote)||"";
+  await sb.from("user_roles").update({role:newRole.trim(),note:newNote,updated_at:new Date().toISOString()}).eq("id",id);
+  await logActivity("update","user_roles",id,`${email} → ${newNote.trim()}`,{role:currentRole},{role:newRole.trim()});
+  toast(lang==="ja"?"更新しました":"Updated");
+  renderUserMgmt();
+}
+async function deleteUserRole(id,email){
+  if(!confirm(lang==="ja"?`${email} を削除しますか？\n削除すると次回ログイン時に「現場」ロールになります。`:`Remove ${email}?`)) return;
+  await sb.from("user_roles").delete().eq("id",id);
+  await logActivity("delete","user_roles",id,`ユーザー削除: ${email}`,{email},null);
+  toast(lang==="ja"?"削除しました":"Deleted");
+  renderUserMgmt();
+}
+
 function renderMaster(){
   if(mf.mode==="volume"){ renderMasterVolume(); return; }
+  if(mf.mode==="users"){ renderUserMgmt(); return; }
   const list=getMaster(mf.mode);
   const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
   const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?t().mCourseNote:(mf.mode==="oki_chi"?t().mOkiNote:t().mNote);
@@ -2170,7 +2282,7 @@ function renderMaster(){
       ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー管理":"Users"))}
     </div>
     <div style="display:flex;gap:8px">
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
@@ -2247,7 +2359,7 @@ function renderMasterVolume(){
       ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー管理":"Users"))}
     </div>
     <div style="display:flex;gap:8px">
       <input id="mvNew" placeholder="${lang==="ja"?"場所の名前":"Location name"}" style="flex:1">
@@ -2381,6 +2493,7 @@ function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv;
+window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
 
 start();
 </script>
