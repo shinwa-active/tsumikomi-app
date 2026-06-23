@@ -1644,9 +1644,9 @@ const ROUTES=[
   {key:"dc2_5f__dc3",         label:"DC2 5F → DC3",                 from:"DC2 5F",  to:"DC3",     pri:false},
   {key:"atom__dc1_1f",        label:"アトム電器 → DC1 1F",           from:"アトム電器",to:"DC1 1F", pri:false},
 ];
-const SHIPPERS=["shark","siroca","dream","daikin","atom"];
-const SHIPPER_LABELS={shark:"シャーク",siroca:"シロカ",dream:"ドリーム",daikin:"ダイキン",atom:"アトム電器"};
-const SHIPPER_COLORS={shark:"#2563eb",siroca:"#7c3aed",dream:"#059669",daikin:"#d97706",atom:"#dc2626"};
+const SHIPPERS=["shark","siroca","dream","pioneer","atom"];
+const SHIPPER_LABELS={shark:"シャーク",siroca:"シロカ",dream:"ドリーム",pioneer:"パイオニア",atom:"アトム電器"};
+const SHIPPER_COLORS={shark:"#2563eb",siroca:"#7c3aed",dream:"#059669",pioneer:"#d97706",atom:"#dc2626"};
 
 let routeDate=todayStrFn();
 let routeEditId=null; // 編集中レコードID
@@ -1692,37 +1692,50 @@ function localDatetimeValue(iso){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-async function saveRouteRecord(routeKey){
-  const existing=routeData.filter(r=>r.route_key===routeKey);
-  const seq=routeEditId ? (routeData.find(r=>r.id===routeEditId)?.seq||1) : existing.length+1;
-  const r=ROUTES.find(x=>x.key===routeKey);
+async function saveRouteRecord(){
+  const existing=routeData.filter(r=>r.route_key==="daily");
+  const seq=existing.length+1;
   const payload={
     record_date: routeDate,
-    route_key: routeKey,
-    route_label: r?.label||routeKey,
+    route_key: "daily",
+    route_label: "出荷量実績",
     seq,
     started_at: null,
     finished_at: null,
-    workers: parseInt(document.getElementById(`rr_workers_${routeKey}`)?.value)||null,
-    vol_shark: parseInt(document.getElementById(`rr_shark_${routeKey}`)?.value)||0,
-    vol_siroca: parseInt(document.getElementById(`rr_siroca_${routeKey}`)?.value)||0,
-    vol_dream: parseInt(document.getElementById(`rr_dream_${routeKey}`)?.value)||0,
-    vol_daikin: parseInt(document.getElementById(`rr_daikin_${routeKey}`)?.value)||0,
-    vol_atom: parseInt(document.getElementById(`rr_atom_${routeKey}`)?.value)||0,
-    no_problem: document.getElementById(`rr_ok_${routeKey}`)?.checked||false,
-    note: document.getElementById(`rr_note_${routeKey}`)?.value||"",
-    created_by: user?.email||null,
-    updated_at: new Date().toISOString(),
+    workers: parseInt(document.getElementById("rr_workers")?.value)||null,
+    vol_shark:   parseInt(document.getElementById("rr_shark")?.value)||0,
+    vol_siroca:  parseInt(document.getElementById("rr_siroca")?.value)||0,
+    vol_dream:   parseInt(document.getElementById("rr_dream")?.value)||0,
+    vol_pioneer: parseInt(document.getElementById("rr_pioneer")?.value)||0,
+    vol_atom:    parseInt(document.getElementById("rr_atom")?.value)||0,
+    no_problem:  document.getElementById("rr_ok")?.checked||false,
+    note:        document.getElementById("rr_note")?.value||"",
+    created_by:  user?.email||null,
+    updated_at:  new Date().toISOString(),
   };
-  if(routeEditId){
-    await sb.from("route_records").update(payload).eq("id",routeEditId);
-    routeEditId=null;
-  } else {
-    await sb.from("route_records").insert(payload);
-  }
+  await sb.from("route_records").insert(payload);
+  await logActivity("insert","route_records",null,`出荷量実績 ${routeDate} ${seq}便`,null,{workers:payload.workers});
   await loadRouteRecords(routeDate);
   renderRouteRecords();
   toast(lang==="ja"?"保存しました":"Saved");
+}
+async function updateRouteRecord(id){
+  const payload={
+    workers:     parseInt(document.getElementById(`rre_workers_${id}`)?.value)||null,
+    vol_shark:   parseInt(document.getElementById(`rre_shark_${id}`)?.value)||0,
+    vol_siroca:  parseInt(document.getElementById(`rre_siroca_${id}`)?.value)||0,
+    vol_dream:   parseInt(document.getElementById(`rre_dream_${id}`)?.value)||0,
+    vol_pioneer: parseInt(document.getElementById(`rre_pioneer_${id}`)?.value)||0,
+    vol_atom:    parseInt(document.getElementById(`rre_atom_${id}`)?.value)||0,
+    no_problem:  document.getElementById(`rre_ok_${id}`)?.checked||false,
+    note:        document.getElementById(`rre_note_${id}`)?.value||"",
+    updated_at:  new Date().toISOString(),
+  };
+  await sb.from("route_records").update(payload).eq("id",id);
+  await logActivity("update","route_records",id,"出荷量実績 更新",null,null);
+  await loadRouteRecords(routeDate);
+  renderRouteRecords();
+  toast(lang==="ja"?"更新しました":"Updated");
 }
 
 async function deleteRouteRecord(id){
@@ -1733,15 +1746,15 @@ async function deleteRouteRecord(id){
 }
 
 function routeExportCsv(){
-  const head=["日付","行き先","便","開始時刻","終了時刻","稼働時間(h)","人数","シャーク","シロカ","ドリーム","ダイキン","アトム電器","問題なし","備考"];
+  const head=["日付","便","人数","シャーク","シロカ","ドリーム","パイオニア","アトム電器","合計","問題なし","備考"];
   const rows=routeData.map(r=>{
-    const span=r.started_at&&r.finished_at?((new Date(r.finished_at)-new Date(r.started_at))/3600000).toFixed(2):"";
-    return [r.record_date,r.route_label,r.seq,r.started_at?hhmm(r.started_at):"",r.finished_at?hhmm(r.finished_at):"",span,r.workers||"",r.vol_shark||0,r.vol_siroca||0,r.vol_dream||0,r.vol_daikin||0,r.vol_atom||0,r.no_problem?"○":"",r.note||""];
+    const total=SHIPPERS.reduce((s,k)=>s+(r[`vol_${k}`]||0),0);
+    return [r.record_date,r.seq,r.workers||"",r.vol_shark||0,r.vol_siroca||0,r.vol_dream||0,r.vol_pioneer||0,r.vol_atom||0,total,r.no_problem?"○":"",r.note||""];
   });
   const body=[head,...rows].map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob=new Blob(["\uFEFF"+body],{type:"text/csv"});
   const u=URL.createObjectURL(blob); const a=document.createElement("a");
-  a.href=u; a.download=`行き先別実績_${routeDate}.csv`; a.click(); toast(lang==="ja"?"CSV出力完了":"CSV exported");
+  a.href=u; a.download=`出荷量実績_${routeDate}.csv`; a.click(); toast(lang==="ja"?"CSV出力完了":"CSV exported");
 }
 
 // ガントチャートSVG
@@ -1893,7 +1906,7 @@ function svgRouteTrend(dayTotals){
 async function renderRouteRecords(){
   await loadRouteRecords(routeDate);
 
-  // 期間データ読み込み
+  // 期間データ
   const today=todayStrFn();
   let rangeFrom=today, rangeTo=today;
   if(routePeriod==="week"){
@@ -1904,14 +1917,12 @@ async function renderRouteRecords(){
   }
   const rangeData=await loadRouteRecordsRange(rangeFrom, rangeTo);
 
-  // 行き先別合計（棒グラフ用）
-  const routeTotals=ROUTES.map(r=>{
-    const recs=rangeData.filter(d=>d.route_key===r.key);
-    const total=recs.reduce((s,d)=>s+SHIPPERS.reduce((ss,k)=>ss+(d[`vol_${k}`]||0),0),0);
-    return {label:r.label, total, pri:r.pri};
-  });
+  // 荷主別合計
+  const shipperTotals={};
+  SHIPPERS.forEach(k=>{ shipperTotals[k]=rangeData.reduce((s,r)=>s+(r[`vol_${k}`]||0),0); });
+  const totalVol=Object.values(shipperTotals).reduce((s,v)=>s+v,0);
 
-  // 日別推移（折れ線グラフ用）
+  // 日別推移
   const byDay={};
   rangeData.forEach(r=>{
     if(!byDay[r.record_date]) byDay[r.record_date]={date:r.record_date,total:0};
@@ -1919,18 +1930,46 @@ async function renderRouteRecords(){
   });
   const dayTrend=Object.values(byDay).sort((a,b)=>a.date.localeCompare(b.date));
 
-  // 荷主別合計（サマリカード用）
-  const shipperTotals={};
-  SHIPPERS.forEach(k=>{ shipperTotals[k]=rangeData.reduce((s,r)=>s+(r[`vol_${k}`]||0),0); });
-  const totalVol=Object.values(shipperTotals).reduce((s,v)=>s+v,0);
-
-  const periodLabel=routePeriod==="day"?(lang==="ja"?"今日（"+routeDate+"）":"Today"):routePeriod==="week"?(lang==="ja"?"今週":"This week"):(lang==="ja"?"今月":"This month");
+  const periodLabel=routePeriod==="day"?routeDate:routePeriod==="week"?(lang==="ja"?"今週":"This week"):(lang==="ja"?"今月":"This month");
   const tabBtn=(k,lbl)=>`<button class="btn small" style="flex:1;padding:6px 4px;font-size:12px;${routePeriod===k?"":"background:#f1f5f9;color:#475569"}" onclick="routePeriod='${k}';renderRouteRecords()">${lbl}</button>`;
 
-  const stackData=routeTotals.filter(d=>d.total>0);
+  // 今日の既存記録
+  const todayRecs=routeData.filter(r=>r.route_key==="daily");
+  const todayList=todayRecs.map(r=>{
+    const total=SHIPPERS.reduce((s,k)=>s+(r[`vol_${k}`]||0),0);
+    const vols=SHIPPERS.filter(k=>r[`vol_${k}`]>0).map(k=>`<span style="color:${SHIPPER_COLORS[k]};font-weight:bold">${SHIPPER_LABELS[k]}:${r[`vol_${k}`]}</span>`).join(" ");
+    return `<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <b style="font-size:15px">${r.seq}便</b>
+        ${r.workers?`<span style="color:#64748b;font-size:13px">👤 ${r.workers}名</span>`:""}
+        ${r.no_problem?`<span style="background:#dcfce7;color:#166534;border-radius:6px;padding:2px 8px;font-size:12px">✅ 問題なし</span>`:""}
+        <span style="margin-left:auto;font-size:15px;font-weight:bold;color:#059669">計 ${total}</span>
+        <button class="btn small" style="padding:3px 10px" onclick="toggleEditRec(${r.id})">✏️</button>
+        <button class="btn small" style="padding:3px 10px;background:#fef2f2;color:#dc2626" onclick="deleteRouteRecord(${r.id})">🗑</button>
+      </div>
+      <div style="font-size:13px;flex-wrap:wrap;display:flex;gap:6px">${vols||`<span style="color:#94a3b8">${lang==="ja"?"出荷量未入力":"No volume"}</span>`}</div>
+      ${r.note?`<div style="color:#94a3b8;font-size:12px;margin-top:4px">${esc(r.note)}</div>`:""}
+      <div id="editBox_${r.id}" style="display:none;margin-top:10px;border-top:1px solid #e2e8f0;padding-top:10px">
+        <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+          <span style="font-size:12px;color:#64748b;white-space:nowrap">人数</span>
+          <input type="number" id="rre_workers_${r.id}" value="${r.workers||""}" min="0" style="width:60px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:13px;margin-left:8px">
+            <input type="checkbox" id="rre_ok_${r.id}" ${r.no_problem?"checked":""}> 問題なし
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
+          ${SHIPPERS.map(k=>`<div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:11px;color:${SHIPPER_COLORS[k]};font-weight:bold;width:52px">${SHIPPER_LABELS[k]}</span>
+            <input type="number" id="rre_${k}_${r.id}" value="${r[`vol_${k}`]||0}" min="0" style="flex:1;font-size:12px">
+          </div>`).join("")}
+        </div>
+        <input id="rre_note_${r.id}" value="${esc(r.note||"")}" placeholder="備考" style="width:100%;margin-bottom:8px;font-size:12px">
+        <button class="btn green" style="width:100%;padding:8px" onclick="updateRouteRecord(${r.id})">💾 更新</button>
+      </div>
+    </div>`;
+  }).join("");
 
-  app.innerHTML=topbar()+header(lang==="ja"?"行き先別実績":"Route Records")+`<div class="pad">
-
+  app.innerHTML=topbar()+header(lang==="ja"?"出荷量実績":"Volume Records")+`<div class="pad">
     <div style="display:flex;gap:6px;margin-bottom:10px">
       ${tabBtn("day",lang==="ja"?"日別":"Daily")}${tabBtn("week",lang==="ja"?"週別":"Weekly")}${tabBtn("month",lang==="ja"?"月別":"Monthly")}
     </div>
@@ -1944,7 +1983,7 @@ async function renderRouteRecords(){
 
     ${totalVol>0?`
     <div class="panel" style="margin-bottom:12px">
-      <b style="color:#1e3a5f">📊 ${lang==="ja"?"荷主別出荷合計":"Volume by shipper"}</b>
+      <b style="color:#1e3a5f">📦 ${lang==="ja"?"荷主別出荷合計":"Volume by shipper"}</b>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
         ${SHIPPERS.map(k=>`<div style="background:#f8fafc;border-radius:8px;padding:8px;text-align:center">
           <div style="font-size:11px;font-weight:bold;color:${SHIPPER_COLORS[k]}">${SHIPPER_LABELS[k]}</div>
@@ -1957,12 +1996,6 @@ async function renderRouteRecords(){
       </div>
     </div>
 
-    ${stackData.length?`<div class="panel" style="margin-bottom:12px">
-      <b style="color:#1e3a5f">🏁 ${lang==="ja"?"行き先別出荷量":"Volume by route"}</b>
-      <p class="hint" style="margin:2px 0 6px">🔴 ${lang==="ja"?"第一優先":"Priority"} 　🔵 ${lang==="ja"?"通常":"Normal"}</p>
-      ${svgRouteBar(stackData)}
-    </div>`:""}
-
     ${dayTrend.length>=2?`<div class="panel" style="margin-bottom:12px">
       <b style="color:#1e3a5f">📈 ${lang==="ja"?"日別出荷量推移":"Daily volume trend"}</b>
       ${svgRouteTrend(dayTrend)}
@@ -1972,10 +2005,32 @@ async function renderRouteRecords(){
       <div>${lang==="ja"?"この期間のデータはありません":"No data for this period"}</div>
     </div>`}
 
-    <div style="font-weight:bold;font-size:15px;color:#1e3a5f;margin:12px 0 8px">📝 ${lang==="ja"?"実績入力（今日："+todayStrFn()+"）":"Input (Today: "+todayStrFn()+")"}</div>
-    <div style="font-size:12px;color:#64748b;margin-bottom:10px">${lang==="ja"?"人数・出荷量・問題なし有無を便ごとに記録します":"Record workers, volume, and status per run"}</div>
-    ${ROUTES.map(r=>routeFormHtml(r.key)).join("")}
+    <div style="font-weight:bold;font-size:15px;color:#1e3a5f;margin:12px 0 8px">📝 ${lang==="ja"?"入力（今日："+todayStrFn()+"）":"Input (Today: "+todayStrFn()+")"}</div>
+    ${todayList}
+
+    <div class="panel" style="margin-top:8px">
+      <b style="font-size:14px;color:#1e3a5f">${todayRecs.length>0?(lang==="ja"?`${todayRecs.length+1}便目を追加`:`Add run ${todayRecs.length+1}`):(lang==="ja"?"1便目を入力":"Enter 1st run")}</b>
+      <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:8px;align-items:center">
+        <span style="font-size:12px;color:#64748b;white-space:nowrap">人数</span>
+        <input type="number" id="rr_workers" placeholder="0" min="0" style="width:64px;font-size:13px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;margin-left:8px">
+          <input type="checkbox" id="rr_ok"> 問題なし
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px">
+        ${SHIPPERS.map(k=>`<div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:11px;color:${SHIPPER_COLORS[k]};font-weight:bold;width:52px">${SHIPPER_LABELS[k]}</span>
+          <input type="number" id="rr_${k}" placeholder="0" min="0" style="flex:1;font-size:12px">
+        </div>`).join("")}
+      </div>
+      <input id="rr_note" placeholder="${lang==="ja"?"備考（任意）":"Note (optional)"}" style="width:100%;margin-bottom:8px;font-size:12px">
+      <button class="btn green" style="width:100%;padding:10px" onclick="saveRouteRecord()">💾 ${lang==="ja"?"保存":"Save"}</button>
+    </div>
   </div>`+tabbar();
+}
+function toggleEditRec(id){
+  const el=document.getElementById("editBox_"+id);
+  if(el) el.style.display=el.style.display==="none"?"block":"none";
 }
 
 function renderDashboard(){
@@ -2071,7 +2126,7 @@ function renderDashboard(){
     </div>
 
     <button class="btn green" style="width:100%;margin-bottom:8px" onclick="dashExportCsv()">⬇ CSV ${lang==="ja"?"ダウンロード":"Download"} (${periodLabel})</button>
-    <button class="btn" style="width:100%;background:#1e3a5f;color:#fff;margin-bottom:8px" onclick="go('route_records')">📋 ${lang==="ja"?"行き先別実績の入力・確認":"Route Records"}</button>
+    <button class="btn" style="width:100%;background:#1e3a5f;color:#fff;margin-bottom:8px" onclick="go('route_records')">📋 ${lang==="ja"?"出荷量実績の入力・確認":"Volume Records"}</button>
   </div>`+tabbar();
 }
 
@@ -2492,7 +2547,7 @@ function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 /* グローバル公開（onclick用） */
 Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
-window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv;
+window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
 
 start();
