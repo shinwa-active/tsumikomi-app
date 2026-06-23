@@ -1518,22 +1518,180 @@ async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock();
 async function restoreRecord(id){ if(!isAdminAllowed) return; if(!confirm(lang==="ja"?"この記録を復元しますか？":"Restore this record?"))return; await sb.from("load_records").update({deleted_at:null,deleted_by:null}).eq("id",id); await logActivity("restore","load_records",id,"記録を復元",null,null); await loadRecords(); renderHistory(); toast(lang==="ja"?"復元しました":"Restored"); }
 
 /* ---------- ダッシュボード ---------- */
+/* ========== 集計ダッシュボード ========== */
+let dashPeriod="today"; // today / week / 7days / custom
+let dashFrom="", dashTo="";
+
+function dashRecords(){
+  const now=new Date();
+  const todayStr=todayStrFn();
+  if(dashPeriod==="today") return records.filter(r=>dayLabel(r.created_at)===dayLabel(now.toISOString()));
+  if(dashPeriod==="week"){
+    const d=new Date(now); d.setDate(d.getDate()-d.getDay()+1);
+    const mon=d.toISOString().slice(0,10);
+    return records.filter(r=>r.created_at&&r.created_at.slice(0,10)>=mon&&r.created_at.slice(0,10)<=todayStr);
+  }
+  if(dashPeriod==="7days"){
+    const d=new Date(now); d.setDate(d.getDate()-6);
+    const from=d.toISOString().slice(0,10);
+    return records.filter(r=>r.created_at&&r.created_at.slice(0,10)>=from&&r.created_at.slice(0,10)<=todayStr);
+  }
+  if(dashPeriod==="custom"&&dashFrom&&dashTo)
+    return records.filter(r=>r.created_at&&r.created_at.slice(0,10)>=dashFrom&&r.created_at.slice(0,10)<=dashTo);
+  return records.filter(r=>dayLabel(r.created_at)===dayLabel(now.toISOString()));
+}
+function todayStrFn(){ const n=new Date(); return n.getFullYear()+"-"+("0"+(n.getMonth()+1)).slice(-2)+"-"+("0"+n.getDate()).slice(-2); }
+
+function svgBar(data, labelKey, valKey, color, height, opts={}){
+  if(!data.length) return `<p class="hint">${lang==="ja"?"データなし":"No data"}</p>`;
+  const max=Math.max(...data.map(d=>d[valKey]),1);
+  const W=320, H=height||160, pad=36, barW=Math.max(8,Math.floor((W-pad*2)/data.length)-4);
+  const bars=data.map((d,i)=>{
+    const bh=Math.max(2,Math.round((d[valKey]/max)*(H-44)));
+    const x=pad+i*((W-pad*2)/data.length);
+    const y=H-24-bh;
+    const lbl=String(d[labelKey]).length>3?String(d[labelKey]).slice(0,3):String(d[labelKey]);
+    return `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="${color}" opacity="0.85"/>
+      <text x="${x+barW/2}" y="${H-8}" text-anchor="middle" font-size="9" fill="#64748b">${esc(lbl)}</text>
+      ${d[valKey]>0?`<text x="${x+barW/2}" y="${y-3}" text-anchor="middle" font-size="10" fill="#1e3a5f" font-weight="bold">${d[valKey]}</text>`:""}`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible">${bars}</svg>`;
+}
+function svgLine(data, labelKey, valKey, color){
+  if(data.length<2) return `<p class="hint">${lang==="ja"?"データが2日以上必要です":"Need 2+ days of data"}</p>`;
+  const max=Math.max(...data.map(d=>d[valKey]),0.1);
+  const W=320, H=120, pad=36;
+  const pts=data.map((d,i)=>{
+    const x=pad+i*((W-pad*2)/(data.length-1));
+    const y=H-24-Math.round((d[valKey]/max)*(H-44));
+    return {x,y,v:d[valKey],l:d[labelKey]};
+  });
+  const path=pts.map((p,i)=>(i===0?`M${p.x},${p.y}`:`L${p.x},${p.y}`)).join(" ");
+  const dots=pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4" fill="${color}"/>
+    <text x="${p.x}" y="${p.y-8}" text-anchor="middle" font-size="10" fill="#1e3a5f" font-weight="bold">${p.v.toFixed(1)}</text>
+    <text x="${p.x}" y="${H-8}" text-anchor="middle" font-size="9" fill="#64748b">${String(p.l).slice(-5)}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible">
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>
+    ${dots}</svg>`;
+}
+function dashExportCsv(){
+  const recs=dashRecords();
+  // 集計サマリ
+  const head=["日付","件数","完了件数","パレット数","未完了","稼働時間(h)","生産性(件/h)"];
+  const byDay={};
+  recs.forEach(r=>{
+    const d=r.created_at?r.created_at.slice(0,10):"?";
+    if(!byDay[d]) byDay[d]={date:d,cnt:0,done:0,pal:0};
+    byDay[d].cnt++; if(r.completed_at) byDay[d].done++; byDay[d].pal+=(r.pallets||0);
+  });
+  const rows=Object.values(byDay).map(d=>{
+    const dayR=recs.filter(r=>r.created_at&&r.created_at.slice(0,10)===d.date);
+    const times=dayR.map(r=>r.created_at?new Date(r.created_at).getTime():null).filter(Boolean);
+    const span=times.length>1?(Math.max(...times)-Math.min(...times))/3600000:0;
+    const prod=span>0?(d.cnt/span):0;
+    return [d.date,d.cnt,d.done,d.pal,d.cnt-d.done,span.toFixed(2),prod.toFixed(2)];
+  });
+  const body=[head,...rows].map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob=new Blob(["\uFEFF"+body],{type:"text/csv"});
+  const u=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=u; a.download=`集計_${dashPeriod}_${todayStrFn()}.csv`; a.click(); toast(t().csvDone||"CSV出力完了");
+}
+
 function renderDashboard(){
-  const todays=records.filter(r=>isToday(r.created_at));
-  const pending=todays.filter(r=>!r.completed).length;
-  const notRecv=todays.filter(r=>r.completed&&!r.dest_confirmed).length;
-  const byW={}; todays.forEach(r=>{const w=r.worker_name||"-";byW[w]=(byW[w]||0)+1;});
-  const maxW=Math.max(1,...Object.values(byW),1);
-  app.innerHTML=topbar()+header(t().dashTitle)+`<div class="pad">
-    <div class="grid2 dash-grid4">
-      <div class="stat"><div class="hint">${t().sToday}</div><div class="n" style="color:#2563eb">${todays.length}</div></div>
-      <div class="stat"><div class="hint">${t().sPending}</div><div class="n" style="color:#d97706">${pending}</div></div>
-      <div class="stat"><div class="hint">${t().sRecv}</div><div class="n" style="color:#0d9488">${notRecv}</div></div>
-      <div class="stat"><div class="hint">${t().sWorkers}</div><div class="n" style="color:#059669">${Object.keys(byW).length}</div></div>
+  const recs=dashRecords();
+  const periodLabel={today:lang==="ja"?"今日":"Today",week:lang==="ja"?"今週":"This week","7days":lang==="ja"?"直近7日":"Last 7 days",custom:lang==="ja"?"期間指定":"Custom"}[dashPeriod]||"";
+
+  // ── KPIカード ──
+  const total=recs.length;
+  const done=recs.filter(r=>r.completed_at).length;
+  const pallets=recs.reduce((s,r)=>s+(r.pallets||0),0);
+  const times=recs.map(r=>r.created_at?new Date(r.created_at).getTime():null).filter(Boolean);
+  const spanH=times.length>1?(Math.max(...times)-Math.min(...times))/3600000:0;
+  const prod=spanH>0?(total/spanH):0;
+
+  // ── 時間帯別件数（1h刻み） ──
+  const byHour={};
+  for(let h=0;h<24;h++) byHour[h]=0;
+  recs.forEach(r=>{ if(r.created_at){ const h=new Date(r.created_at).getHours(); byHour[h]=(byHour[h]||0)+1; }});
+  const hourData=Object.entries(byHour).map(([h,n])=>({label:`${h}時`,val:n})).filter(d=>d.val>0||
+    (parseInt(d.label)>=6&&parseInt(d.label)<=22));
+
+  // ── トラック別件数 ──
+  const byTruck={};
+  recs.forEach(r=>{ const k=r.truck||"不明"; byTruck[k]=(byTruck[k]||0)+1; });
+  const truckData=Object.entries(byTruck).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([k,v])=>({label:k,val:v}));
+
+  // ── 積み地別件数 ──
+  const byOki={};
+  recs.forEach(r=>{ (r.oki_chi||"不明").split("、").forEach(o=>{ const k=o.trim()||"不明"; byOki[k]=(byOki[k]||0)+1; }); });
+  const okiData=Object.entries(byOki).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:k,val:v}));
+
+  // ── 生産性推移（過去7日） ──
+  const prodDays={};
+  records.forEach(r=>{
+    if(!r.created_at) return;
+    const d=r.created_at.slice(0,10);
+    if(!prodDays[d]) prodDays[d]={date:d,recs:[]};
+    prodDays[d].recs.push(r);
+  });
+  const prodTrend=Object.values(prodDays).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7).map(d=>{
+    const ts=d.recs.map(r=>new Date(r.created_at).getTime());
+    const sh=ts.length>1?(Math.max(...ts)-Math.min(...ts))/3600000:0;
+    return {label:d.date.slice(5),val:sh>0?parseFloat((d.recs.length/sh).toFixed(2)):0};
+  });
+
+  const tabBtn=(k,label)=>`<button class="btn small" style="flex:1;padding:6px 4px;font-size:12px;${dashPeriod===k?"":"background:#f1f5f9;color:#475569"}" onclick="dashPeriod='${k}';renderDashboard()">${label}</button>`;
+
+  app.innerHTML=topbar()+header(lang==="ja"?"集計ダッシュボード":"Dashboard")+`<div class="pad">
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+      ${tabBtn("today",lang==="ja"?"今日":"Today")}${tabBtn("week",lang==="ja"?"今週":"Week")}${tabBtn("7days",lang==="ja"?"直近7日":"7 days")}${tabBtn("custom",lang==="ja"?"期間指定":"Custom")}
     </div>
-    <div class="panel" style="margin-top:12px"><b>${t().byWorker}</b>
-      ${Object.entries(byW).map(([w,n])=>`<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><div style="width:64px;font-size:14px;color:#475569">${esc(maskName(w))}</div><div style="flex:1;background:#f1f5f9;border-radius:999px"><div class="bar" style="width:${Math.round(n/maxW*100)}%">${n}</div></div></div>`).join("")||`<p class="hint">${t().mEmpty}</p>`}
+    ${dashPeriod==="custom"?`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+      <input type="date" value="${dashFrom}" onchange="dashFrom=this.value;renderDashboard()" style="flex:1">
+      <span>〜</span>
+      <input type="date" value="${dashTo}" onchange="dashTo=this.value;renderDashboard()" style="flex:1">
+    </div>`:""}
+
+    <div class="grid2" style="gap:8px;margin-bottom:12px">
+      <div class="stat"><div class="hint">${lang==="ja"?"積込件数":"Loads"}</div><div class="n" style="color:#2563eb">${total}</div></div>
+      <div class="stat"><div class="hint">${lang==="ja"?"完了件数":"Completed"}</div><div class="n" style="color:#059669">${done}</div></div>
+      <div class="stat"><div class="hint">${lang==="ja"?"パレット総数":"Pallets"}</div><div class="n" style="color:#7c3aed">${pallets}</div></div>
+      <div class="stat"><div class="hint">${lang==="ja"?"生産性(件/h)":"Prod.(loads/h)"}</div><div class="n" style="color:#d97706">${prod.toFixed(1)}</div></div>
     </div>
+
+    <div class="panel" style="margin-bottom:12px">
+      <b style="color:#1e3a5f">⏰ ${lang==="ja"?"時間帯別件数":"Loads by hour"}</b>
+      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"1時間刻み（件数0の時間帯は省略）":"1-hour intervals"}</p>
+      ${svgBar(hourData,"label","val","#2563eb",160)}
+    </div>
+
+    <div class="panel" style="margin-bottom:12px">
+      <b style="color:#1e3a5f">🚚 ${lang==="ja"?"トラック別件数（上位10台）":"Loads by truck (top 10)"}</b>
+      <div style="margin-top:8px">
+        ${truckData.map(d=>{const maxV=Math.max(...truckData.map(x=>x.val),1); return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="width:72px;font-size:12px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.label)}</div>
+          <div style="flex:1;background:#f1f5f9;border-radius:999px;height:20px;position:relative">
+            <div style="width:${Math.round(d.val/maxV*100)}%;background:#2563eb;border-radius:999px;height:100%;display:flex;align-items:center;padding-left:6px">
+              <span style="color:#fff;font-size:11px;font-weight:bold">${d.val}</span>
+            </div>
+          </div>
+        </div>`;}).join("")||`<p class="hint">${lang==="ja"?"データなし":"No data"}</p>`}
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:12px">
+      <b style="color:#1e3a5f">🏭 ${lang==="ja"?"積み地別件数":"Loads by location"}</b>
+      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"複数積み地の場合は各々カウント":"Multi-location records counted per location"}</p>
+      ${svgBar(okiData,"label","val","#7c3aed",140)}
+    </div>
+
+    <div class="panel" style="margin-bottom:12px">
+      <b style="color:#1e3a5f">📈 ${lang==="ja"?"生産性推移（直近7日）":"Productivity trend (last 7 days)"}</b>
+      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"件数÷稼働時間（最初〜最後の登録時刻の差）":"Loads ÷ active hours"}</p>
+      ${svgLine(prodTrend,"label","val","#059669")}
+    </div>
+
+    <button class="btn green" style="width:100%;margin-bottom:8px" onclick="dashExportCsv()">⬇ CSV ${lang==="ja"?"ダウンロード":"Download"} (${periodLabel})</button>
   </div>`+tabbar();
 }
 
