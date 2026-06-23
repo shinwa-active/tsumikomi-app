@@ -859,6 +859,7 @@ async function render(){
   else if(view.name==="detail"){ renderDetail(view.id); return; }
   else if(view.name==="addmore"){ renderAddMore(view.id); return; }
   else if(view.name==="dashboard"){ renderDashboard(); }
+  else if(view.name==="route_records"){ renderRouteRecords(); }
   else if(view.name==="search"){ renderSearch(); return; }
   else if(view.name==="history"){ renderHistory(); return; }
   else if(view.name==="master"){ renderMaster(); return; }
@@ -1597,6 +1598,266 @@ function dashExportCsv(){
   a.href=u; a.download=`集計_${dashPeriod}_${todayStrFn()}.csv`; a.click(); toast(t().csvDone||"CSV出力完了");
 }
 
+/* ========== 行き先別実績管理 ========== */
+const ROUTES=[
+  {key:"dc2_5f__dc1_4f_pri",  label:"DC2 5F → DC1 4F（第一優先）",  from:"DC2 5F",  to:"DC1 4F",  pri:true},
+  {key:"dc2_3f__dc1_4f_pri",  label:"DC2 3F → DC1 4F（第一優先）",  from:"DC2 3F",  to:"DC1 4F",  pri:true},
+  {key:"dc2_5f__dc1_1f_pri",  label:"DC2 5F → DC1 1F（中継第一優先）",from:"DC2 5F",to:"DC1 1F",  pri:true},
+  {key:"dc2_3f__dc1_1f_pri",  label:"DC2 3F → DC1 1F（中継第一優先）",from:"DC2 3F",to:"DC1 1F",  pri:true},
+  {key:"dc2_5f__dc3_pri",     label:"DC2 5F → DC3（第一優先）",      from:"DC2 5F",  to:"DC3",     pri:true},
+  {key:"atom__dc1_1f_pri",    label:"アトム電器 → DC1 1F（中継第一優先）",from:"アトム電器",to:"DC1 1F",pri:true},
+  {key:"dc2_5f__dc1_4f",      label:"DC2 5F → DC1 4F",              from:"DC2 5F",  to:"DC1 4F",  pri:false},
+  {key:"dc2_3f__dc1_4f",      label:"DC2 3F → DC1 4F",              from:"DC2 3F",  to:"DC1 4F",  pri:false},
+  {key:"dc2_5f__dc1_1f",      label:"DC2 5F → DC1 1F",              from:"DC2 5F",  to:"DC1 1F",  pri:false},
+  {key:"dc2_3f__dc1_1f",      label:"DC2 3F → DC1 1F",              from:"DC2 3F",  to:"DC1 1F",  pri:false},
+  {key:"dc2_5f__dc3",         label:"DC2 5F → DC3",                 from:"DC2 5F",  to:"DC3",     pri:false},
+  {key:"atom__dc1_1f",        label:"アトム電器 → DC1 1F",           from:"アトム電器",to:"DC1 1F", pri:false},
+];
+const SHIPPERS=["shark","siroca","dream","daikin","atom"];
+const SHIPPER_LABELS={shark:"シャーク",siroca:"シロカ",dream:"ドリーム",daikin:"ダイキン",atom:"アトム電器"};
+const SHIPPER_COLORS={shark:"#2563eb",siroca:"#7c3aed",dream:"#059669",daikin:"#d97706",atom:"#dc2626"};
+
+let routeDate=todayStrFn();
+let routeEditId=null; // 編集中レコードID
+let routeData=[]; // DBから読んだroute_records
+
+async function loadRouteRecords(date){
+  const {data,error}=await sb.from("route_records").select("*").eq("record_date",date).order("route_key").order("seq");
+  if(!error) routeData=data||[];
+}
+
+// 積込完了時刻から自動で開始時刻をセット（同じ積み地→納品先の最初の完了時刻）
+function autoStartTime(routeKey){
+  const r=ROUTES.find(x=>x.key===routeKey); if(!r) return null;
+  const today=todayStrFn();
+  const matched=records.filter(rec=>{
+    if(!rec.created_at||rec.created_at.slice(0,10)!==today) return false;
+    const okis=(rec.oki_chi||"").split("、").map(x=>x.trim());
+    const dests=(rec.destination||"").split("、").map(x=>x.trim());
+    return okis.some(o=>o===r.from) && dests.some(d=>d.includes(r.to.replace("（第一優先）","").replace("（中継第一優先）","")));
+  });
+  if(!matched.length) return null;
+  const times=matched.map(rec=>rec.completed_at).filter(Boolean).sort();
+  return times[0]||null;
+}
+
+// 進捗ボードのチェック時刻から自動で終了時刻をセット
+function autoFinishTime(routeKey){
+  const r=ROUTES.find(x=>x.key===routeKey); if(!r) return null;
+  const today=todayStrFn();
+  const matched=yoku.filter(y=>{
+    const prefix=yokoGroupPrefix(y.label);
+    return prefix===r.from && ydone(y);
+  });
+  if(!matched.length) return null;
+  const times=matched.map(y=>y.done_at||y.updated_at).filter(Boolean).sort();
+  return times[times.length-1]||null;
+}
+
+function localDatetimeValue(iso){
+  if(!iso) return "";
+  const d=new Date(iso);
+  const pad=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function saveRouteRecord(routeKey){
+  const existing=routeData.filter(r=>r.route_key===routeKey);
+  const seq=routeEditId ? (routeData.find(r=>r.id===routeEditId)?.seq||1) : existing.length+1;
+  const r=ROUTES.find(x=>x.key===routeKey);
+  const startedRaw=document.getElementById(`rr_start_${routeKey}`)?.value;
+  const finishedRaw=document.getElementById(`rr_end_${routeKey}`)?.value;
+  const payload={
+    record_date: routeDate,
+    route_key: routeKey,
+    route_label: r?.label||routeKey,
+    seq,
+    started_at: startedRaw ? new Date(startedRaw).toISOString() : null,
+    finished_at: finishedRaw ? new Date(finishedRaw).toISOString() : null,
+    workers: parseInt(document.getElementById(`rr_workers_${routeKey}`)?.value)||null,
+    vol_shark: parseInt(document.getElementById(`rr_shark_${routeKey}`)?.value)||0,
+    vol_siroca: parseInt(document.getElementById(`rr_siroca_${routeKey}`)?.value)||0,
+    vol_dream: parseInt(document.getElementById(`rr_dream_${routeKey}`)?.value)||0,
+    vol_daikin: parseInt(document.getElementById(`rr_daikin_${routeKey}`)?.value)||0,
+    vol_atom: parseInt(document.getElementById(`rr_atom_${routeKey}`)?.value)||0,
+    no_problem: document.getElementById(`rr_ok_${routeKey}`)?.checked||false,
+    note: document.getElementById(`rr_note_${routeKey}`)?.value||"",
+    created_by: user?.email||null,
+    updated_at: new Date().toISOString(),
+  };
+  if(routeEditId){
+    await sb.from("route_records").update(payload).eq("id",routeEditId);
+    routeEditId=null;
+  } else {
+    await sb.from("route_records").insert(payload);
+  }
+  await loadRouteRecords(routeDate);
+  renderRouteRecords();
+  toast(lang==="ja"?"保存しました":"Saved");
+}
+
+async function deleteRouteRecord(id){
+  if(!confirm(lang==="ja"?"この実績を削除しますか？":"Delete this record?")) return;
+  await sb.from("route_records").delete().eq("id",id);
+  await loadRouteRecords(routeDate);
+  renderRouteRecords();
+}
+
+function routeExportCsv(){
+  const head=["日付","行き先","便","開始時刻","終了時刻","稼働時間(h)","人数","シャーク","シロカ","ドリーム","ダイキン","アトム電器","問題なし","備考"];
+  const rows=routeData.map(r=>{
+    const span=r.started_at&&r.finished_at?((new Date(r.finished_at)-new Date(r.started_at))/3600000).toFixed(2):"";
+    return [r.record_date,r.route_label,r.seq,r.started_at?hhmm(r.started_at):"",r.finished_at?hhmm(r.finished_at):"",span,r.workers||"",r.vol_shark||0,r.vol_siroca||0,r.vol_dream||0,r.vol_daikin||0,r.vol_atom||0,r.no_problem?"○":"",r.note||""];
+  });
+  const body=[head,...rows].map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob=new Blob(["\uFEFF"+body],{type:"text/csv"});
+  const u=URL.createObjectURL(blob); const a=document.createElement("a");
+  a.href=u; a.download=`行き先別実績_${routeDate}.csv`; a.click(); toast(lang==="ja"?"CSV出力完了":"CSV exported");
+}
+
+// ガントチャートSVG
+function svgGantt(data){
+  if(!data.length) return `<p class="hint">${lang==="ja"?"データなし":"No data"}</p>`;
+  const validData=data.filter(d=>d.started_at);
+  if(!validData.length) return `<p class="hint">${lang==="ja"?"開始時刻のあるデータがありません":"No records with start time"}</p>`;
+  const allTimes=[...validData.map(d=>new Date(d.started_at).getTime()),...validData.filter(d=>d.finished_at).map(d=>new Date(d.finished_at).getTime())];
+  const minT=Math.min(...allTimes); const maxT=Math.max(...allTimes,minT+3600000);
+  const W=320, barH=18, gap=6, pad={l:8,r:8,t:16,b:20};
+  const H=pad.t+(barH+gap)*validData.length+pad.b;
+  const toX=t=>pad.l+(t-minT)/(maxT-minT)*(W-pad.l-pad.r);
+  const COLORS=["#2563eb","#7c3aed","#059669","#d97706","#dc2626","#0891b2","#9333ea","#16a34a","#ea580c","#6366f1","#0d9488","#b45309"];
+  const bars=validData.map((d,i)=>{
+    const x1=toX(new Date(d.started_at).getTime());
+    const x2=d.finished_at?toX(new Date(d.finished_at).getTime()):toX(maxT);
+    const y=pad.t+(barH+gap)*i;
+    const w=Math.max(4,x2-x1);
+    const col=COLORS[i%COLORS.length];
+    const label=d.route_label.replace("（第一優先）","★").replace("（中継第一優先）","中");
+    const shortLabel=label.length>14?label.slice(0,14)+"…":label;
+    return `<rect x="${x1.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${barH}" rx="3" fill="${col}" opacity="0.85"/>
+      <text x="${(x1+2).toFixed(1)}" y="${(y+barH-4).toFixed(1)}" font-size="8" fill="#fff" font-weight="bold">${esc(shortLabel)} ${d.seq}便</text>`;
+  }).join("");
+  // 時刻軸
+  const minH=new Date(minT).getHours(); const maxH=new Date(maxT).getHours()+1;
+  const axis=[];
+  for(let h=minH;h<=maxH;h++){
+    const t=new Date(minT); t.setHours(h,0,0,0);
+    if(t.getTime()<minT||t.getTime()>maxT) continue;
+    const x=toX(t.getTime());
+    axis.push(`<line x1="${x.toFixed(1)}" y1="${pad.t}" x2="${x.toFixed(1)}" y2="${H-pad.b}" stroke="#e2e8f0" stroke-width="1"/>
+      <text x="${x.toFixed(1)}" y="${H-6}" text-anchor="middle" font-size="9" fill="#94a3b8">${h}時</text>`);
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible">${axis.join("")}${bars}</svg>`;
+}
+
+// 荷主別積み上げ棒グラフ
+function svgStackedBar(data){
+  if(!data.length) return `<p class="hint">${lang==="ja"?"データなし":"No data"}</p>`;
+  const W=320,H=160,pad=40;
+  const totals=data.map(d=>SHIPPERS.reduce((s,k)=>s+(d[`vol_${k}`]||0),0));
+  const maxV=Math.max(...totals,1);
+  const barW=Math.max(8,Math.floor((W-pad*2)/data.length)-4);
+  const bars=data.map((d,i)=>{
+    const x=pad+i*((W-pad*2)/data.length);
+    let yOff=H-24;
+    const segs=SHIPPERS.map(k=>{
+      const v=d[`vol_${k}`]||0; if(!v) return "";
+      const bh=Math.round(v/maxV*(H-44));
+      yOff-=bh;
+      return `<rect x="${x}" y="${yOff}" width="${barW}" height="${bh}" fill="${SHIPPER_COLORS[k]}" opacity="0.85" title="${SHIPPER_LABELS[k]}:${v}"/>`;
+    }).join("");
+    const total=totals[i];
+    const lbl=d.route_label.replace("DC2 5F → ","").replace("DC2 3F → ","").replace("アトム電器 → ","").replace("（第一優先）","★").replace("（中継第一優先）","中").slice(0,6);
+    return `${segs}${total>0?`<text x="${x+barW/2}" y="${yOff-3}" text-anchor="middle" font-size="9" fill="#1e3a5f" font-weight="bold">${total}</text>`:""}
+      <text x="${x+barW/2}" y="${H-8}" text-anchor="middle" font-size="8" fill="#64748b">${esc(lbl)}</text>`;
+  }).join("");
+  // 凡例
+  const legend=SHIPPERS.map((k,i)=>`<rect x="${i*60+4}" y="0" width="10" height="10" fill="${SHIPPER_COLORS[k]}" rx="2"/><text x="${i*60+17}" y="9" font-size="9" fill="#475569">${SHIPPER_LABELS[k]}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H+20}" width="100%" style="overflow:visible"><g transform="translate(0,16)">${bars}</g><g transform="translate(0,4)">${legend}</g></svg>`;
+}
+
+function routeFormHtml(rk){
+  const r=ROUTES.find(x=>x.key===rk);
+  const existing=routeData.filter(d=>d.route_key===rk);
+  const autoStart=autoStartTime(rk);
+  const autoEnd=autoFinishTime(rk);
+  return `<div class="panel" style="margin-bottom:10px;border-left:4px solid ${r?.pri?"#dc2626":"#2563eb"}">
+    <div style="font-weight:bold;font-size:14px;color:${r?.pri?"#dc2626":"#1e3a5f"};margin-bottom:8px">${r?.pri?"🔴":"🔵"} ${esc(r?.label||rk)}</div>
+    ${existing.map(rec=>`<div style="background:#f8fafc;border-radius:8px;padding:8px;margin-bottom:6px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <b>${rec.seq}便</b>
+        <div style="display:flex;gap:6px">
+          <button class="btn small" style="padding:2px 10px" onclick="routeEditId=${rec.id};renderRouteRecords()">✏️</button>
+          <button class="btn small" style="padding:2px 10px;background:#fef2f2;color:#dc2626" onclick="deleteRouteRecord(${rec.id})">🗑</button>
+        </div>
+      </div>
+      <div style="color:#64748b;margin-top:4px">${rec.started_at?hhmm(rec.started_at):"--:--"} 〜 ${rec.finished_at?hhmm(rec.finished_at):"--:--"}　${rec.workers?rec.workers+"名":""}　${rec.no_problem?"✅ 問題なし":""}</div>
+      <div style="color:#64748b;font-size:12px">${SHIPPERS.filter(k=>rec[`vol_${k}`]>0).map(k=>`${SHIPPER_LABELS[k]}:${rec[`vol_${k}`]}`).join(" / ")||"出荷量未入力"}</div>
+      ${rec.note?`<div style="color:#94a3b8;font-size:12px">${esc(rec.note)}</div>`:""}
+    </div>`).join("")}
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-top:4px">
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">${existing.length+1}便を追加</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <div style="flex:1"><div style="font-size:11px;color:#64748b;margin-bottom:2px">開始</div>
+          <input type="datetime-local" id="rr_start_${rk}" value="${localDatetimeValue(autoStart)}" style="width:100%;font-size:12px"></div>
+        <div style="flex:1"><div style="font-size:11px;color:#64748b;margin-bottom:2px">終了</div>
+          <input type="datetime-local" id="rr_end_${rk}" value="${localDatetimeValue(autoEnd)}" style="width:100%;font-size:12px"></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
+        <div style="font-size:12px;color:#64748b;white-space:nowrap">人数</div>
+        <input type="number" id="rr_workers_${rk}" placeholder="0" style="width:60px;font-size:13px" min="0">
+        <label style="display:flex;align-items:center;gap:4px;font-size:13px;margin-left:8px">
+          <input type="checkbox" id="rr_ok_${rk}"> 問題なし
+        </label>
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-bottom:4px">出荷量（荷主別）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
+        ${SHIPPERS.map(k=>`<div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:11px;color:${SHIPPER_COLORS[k]};font-weight:bold;width:44px">${SHIPPER_LABELS[k]}</span>
+          <input type="number" id="rr_${k}_${rk}" placeholder="0" min="0" style="flex:1;font-size:12px">
+        </div>`).join("")}
+      </div>
+      <input id="rr_note_${rk}" placeholder="${lang==="ja"?"備考（任意）":"Note (optional)"}" style="width:100%;margin-bottom:8px;font-size:12px">
+      <button class="btn green" style="width:100%;padding:8px" onclick="saveRouteRecord('${rk}')">💾 ${lang==="ja"?"保存":"Save"}</button>
+    </div>
+  </div>`;
+}
+
+async function renderRouteRecords(){
+  await loadRouteRecords(routeDate);
+  const ganttData=routeData.filter(d=>d.started_at);
+  const stackData=ROUTES.map(r=>{
+    const recs=routeData.filter(d=>d.route_key===r.key);
+    const merged={route_label:r.label};
+    SHIPPERS.forEach(k=>{ merged[`vol_${k}`]=recs.reduce((s,d)=>s+(d[`vol_${k}`]||0),0); });
+    return merged;
+  }).filter(d=>SHIPPERS.some(k=>d[`vol_${k}`]>0));
+
+  app.innerHTML=topbar()+header(lang==="ja"?"行き先別実績":"Route Records")+`<div class="pad">
+    <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+      <input type="date" value="${routeDate}" onchange="routeDate=this.value;renderRouteRecords()" style="flex:1">
+      <button class="btn green small" onclick="routeExportCsv()">⬇ CSV</button>
+    </div>
+
+    ${ganttData.length?`<div class="panel" style="margin-bottom:12px">
+      <b style="color:#1e3a5f">⏱ ${lang==="ja"?"稼働ガントチャート":"Activity Gantt"}</b>
+      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"各行き先の稼働時間帯":"Time span per route"}</p>
+      ${svgGantt(ganttData)}
+    </div>`:""}
+
+    ${stackData.length?`<div class="panel" style="margin-bottom:12px">
+      <b style="color:#1e3a5f">📦 ${lang==="ja"?"荷主別出荷量":"Volume by shipper"}</b>
+      ${svgStackedBar(stackData)}
+    </div>`:""}
+
+    <div style="font-weight:bold;font-size:15px;color:#1e3a5f;margin-bottom:8px">📝 ${lang==="ja"?"実績入力":"Input"}</div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:10px">
+      ${lang==="ja"?"開始・終了時刻は積込完了・進捗ボードチェック時刻から自動セット（手動修正可）":"Start/end times auto-filled from load completion and progress board"}
+    </div>
+    ${ROUTES.map(r=>routeFormHtml(r.key)).join("")}
+  </div>`+tabbar();
+}
+
 function renderDashboard(){
   const recs=dashRecords();
   const periodLabel={today:lang==="ja"?"今日":"Today",week:lang==="ja"?"今週":"This week","7days":lang==="ja"?"直近7日":"Last 7 days",custom:lang==="ja"?"期間指定":"Custom"}[dashPeriod]||"";
@@ -1692,6 +1953,7 @@ function renderDashboard(){
     </div>
 
     <button class="btn green" style="width:100%;margin-bottom:8px" onclick="dashExportCsv()">⬇ CSV ${lang==="ja"?"ダウンロード":"Download"} (${periodLabel})</button>
+    <button class="btn" style="width:100%;background:#1e3a5f;color:#fff;margin-bottom:8px" onclick="go('route_records')">📋 ${lang==="ja"?"行き先別実績の入力・確認":"Route Records"}</button>
   </div>`+tabbar();
 }
 
@@ -2031,6 +2293,7 @@ function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 /* グローバル公開（onclick用） */
 Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
+window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv;
 
 start();
 </script>
