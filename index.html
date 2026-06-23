@@ -901,7 +901,7 @@ function renderRegister(){
     <button class="btn" id="saveBtn" style="${(isViewOnly||isDestOnly)?"opacity:.4":""}" onclick="saveRecord()">✔ ${t().save}</button>
   </div>`;
   document.getElementById("file").onchange=onFiles;
-  document.getElementById("truck").oninput=()=>{ drawTruck(); updateAnom(); };
+  document.getElementById("truck").oninput=()=>{ drawTruck(); drawCandidates(); updateAnom(); };
   drawOki(); drawDest(); drawTruck(); drawCandidates(); drawCourses(); updateAnom();
 }
 function renderAddMore(id){
@@ -1011,6 +1011,23 @@ function pickOki(i){
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
+
+  // 積み地・納品先・トラックが揃うまでコースエリアをロック
+  const truckEl=document.getElementById("truck");
+  const truckVal=truckEl?truckEl.value.trim():"";
+  const missing=[];
+  if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading location");
+  if(!regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
+  if(!truckVal) missing.push(lang==="ja"?"トラック":"Truck");
+  if(missing.length){
+    area.innerHTML=`<div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;color:#64748b">
+      <div style="font-size:18px;margin-bottom:6px">🔒</div>
+      <div style="font-weight:bold;font-size:14px;margin-bottom:4px">${lang==="ja"?"先に以下を選択してください":"Please select the following first"}</div>
+      <div style="font-size:13px">${missing.map(m=>`• ${m}`).join("　")}</div>
+    </div>`;
+    return;
+  }
+
   const _scrollY=window.scrollY;
   const grp=(key,title)=>{
     const arr=getMaster(key); if(!arr.length) return "";
@@ -1027,7 +1044,7 @@ function drawCandidates(){
     const fn = inMix?"mixPick":"addCand";
     const grpBlocked = courseGrpBlocked(key);
     const grpBlockStyle = grpBlocked ? "opacity:.35;pointer-events:none;filter:grayscale(1)" : "";
-    const grpBlockNote = grpBlocked ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:6px 10px;font-size:12px;margin-bottom:4px">🚫 ${courseGrpBlockMsg()}</div>` : "";
+    const grpBlockNote = grpBlocked ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:6px 10px;font-size:12px;margin-bottom:4px">🚫 ${courseGrpBlockMsg(key)}</div>` : "";
     return `<div style="margin-bottom:8px">${head}${grpBlockNote}<div style="${grpBlockStyle}">${pickBar}
       <div id="candList_${key}" class="cand-list" style="overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
       ${arr.map((v,i)=>{
@@ -1087,7 +1104,28 @@ function drawDest(){
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickDest(${i})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
     + (regDests.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regDests.map(esc).join("、")}</p>`:"");
 }
-function pickDest(i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); drawCandidates(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function pickDest(i){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  const arr=getMaster("dest"); const v=arr[i]; if(v==null) return;
+  const idx=regDests.indexOf(v);
+  if(idx>=0){
+    // 選択解除は常に許可
+    regDests.splice(idx,1);
+  } else {
+    // DC3を選ぼうとしたとき、既に他の納品先がある場合はブロック
+    if(v.indexOf("DC3")>=0 && regDests.length>0){
+      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません。先に他の納品先を外してください。":"DC3 cannot be combined with other destinations.");
+      return;
+    }
+    // DC3以外を選ぼうとしたとき、既にDC3が選ばれている場合はブロック
+    if(v.indexOf("DC3")<0 && regDests.some(d=>d.indexOf("DC3")>=0)){
+      toast(lang==="ja"?"DC3が選択中のため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
+      return;
+    }
+    regDests.push(v);
+  }
+  drawDest(); drawCandidates(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
+}
 function drawTruck(){
   const area=document.getElementById("truckArea"); if(!area) return;
   const inp=document.getElementById("truck");
@@ -1100,7 +1138,7 @@ function pickTruck(v){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const inp=document.getElementById("truck"); if(!inp) return;
   inp.value = (inp.value===v) ? "" : v;
-  drawTruck(); updateAnom();
+  drawTruck(); drawCandidates(); updateAnom();
 }
 function onFiles(e){ if(isViewOnly||isDestOnly){ viewOnlyBlock(); e.target.value=""; return; } const fs=[...e.target.files].slice(0,3-regPhotos.length); fs.forEach(f=>regPhotos.push(f)); drawPhotos(); updateAnom(); }
 function drawPhotos(){
@@ -1191,16 +1229,18 @@ function onQrScan(text){
     return;
   }
   // 納品先によるコースグループ制限チェック（QRスキャン時）
-  const allowed=allowedCourseGrp();
-  if(allowed){
+  const allowedGrps=allowedCourseGrps();
+  if(allowedGrps){
     const inDc1_4f=getMaster("course_dc1_4f").includes(code)||getMaster("course_dc1").includes(code);
     const inDc1_1f=getMaster("course_dc1_1f").includes(code)||getMaster("course_dc1").includes(code);
     const inDc3=getMaster("course_dc3").includes(code);
-    const inAnyDc1=inDc1_4f||inDc1_1f;
-    const grpOk=(allowed==="course_dc1_all"&&inAnyDc1)||(allowed==="course_dc1_4f"&&inDc1_4f)||(allowed==="course_dc1_1f"&&inDc1_1f)||(allowed==="course_dc3"&&inDc3)||(!inAnyDc1&&!inDc3);
-    if(!grpOk){
-      const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"グループが違うため追加できません：":"Wrong group, cannot add: ")+code; big.style.color="#fca5a5"; setTimeout(()=>{ if(big) big.style.color="#fff"; },2000); }
-      return;
+    // マスタに無いコード（手動未登録）は制限しない
+    if(inDc1_4f||inDc1_1f||inDc3){
+      const ok=(inDc1_4f&&allowedGrps.dc1_4f)||(inDc1_1f&&allowedGrps.dc1_1f)||(inDc3&&allowedGrps.dc3);
+      if(!ok){
+        const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"この納品先では選択できません：":"Not allowed for current destination: ")+code; big.style.color="#fca5a5"; setTimeout(()=>{ if(big) big.style.color="#fff"; },2000); }
+        return;
+      }
     }
   }
   regCourses.push({code:code,pl:1}); qrSession.push(code);
@@ -1221,7 +1261,7 @@ function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(
 function addCourseG(key){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   // 納品先によるコースグループ制限チェック
-  if(courseGrpBlocked(key)){ toast(courseGrpBlockMsg()); return; }
+  if(courseGrpBlocked(key)){ toast(courseGrpBlockMsg(key)); return; }
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
@@ -1280,26 +1320,52 @@ function priorityOkiMsg(violated){
 }
 /* ---- 納品先によるコースグループ制限 ---- */
 // 選択中の納品先からDC1のみ/DC3のみ/両方/制限なしを返す
-function allowedCourseGrp(){
-  const hasDC1 = regDests.some(d=>d.indexOf("DC1")>=0);
-  const hasDC3 = regDests.some(d=>d.indexOf("DC3")>=0);
-  if(hasDC1 && !hasDC3) return "course_dc1_all"; // DC1系全て許可（4F・1F両方）
-  if(hasDC3 && !hasDC1) return "course_dc3";
-  return null; // 両方またはどちらもなし → 制限なし
+/* ---- 納品先によるコースグループ制限（精密版） ----
+   各グループが許可されるかを納品先の文字列から判定する。
+   - DC1 4F を含む → course_dc1_4f を許可
+   - DC1 を含むが 4F でない（例：DC1 1F北、DC1 1F等）→ course_dc1_1f を許可
+   - DC3 を含む → course_dc3 を許可
+   - 何も含まない → 全て許可（制限なし）
+*/
+function allowedCourseGrps(){
+  // 選択中の納品先から許可グループセットを作成
+  let allow4f=false, allow1f=false, allow3=false;
+  regDests.forEach(d=>{
+    if(d.indexOf("DC1 4F")>=0 || d.indexOf("DC14F")>=0) allow4f=true;
+    else if(d.indexOf("DC1")>=0) allow1f=true; // DC1だが4Fでない → 1F系
+    if(d.indexOf("DC3")>=0) allow3=true;
+  });
+  const any=allow4f||allow1f||allow3;
+  if(!any) return null; // 制限なし
+  return { dc1_4f:allow4f, dc1_1f:allow1f, dc3:allow3 };
 }
 function courseGrpBlocked(grp){
-  const allowed=allowedCourseGrp();
-  if(!allowed) return false;
-  if(allowed==="course_dc1_all") return grp==="course_dc3"; // DC1系（1F/4F）は両方許可
-  return grp!==allowed;
+  const a=allowedCourseGrps();
+  if(!a) return false; // 制限なし
+  if(grp==="course_dc1_4f") return !a.dc1_4f;
+  if(grp==="course_dc1_1f") return !a.dc1_1f;
+  if(grp==="course_dc3")    return !a.dc3;
+  return false; // course_dc1（旧）などは制限なし
 }
-function courseGrpBlockMsg(){
-  const allowed=allowedCourseGrp();
-  if(!allowed) return "";
-  const label=(allowed==="course_dc1_all"||allowed==="course_dc1_4f"||allowed==="course_dc1"||allowed==="course_dc1_1f")&&allowed!=="course_dc3"?"DC1行き":"DC3行き";
-  return lang==="ja"
-    ? `納品先の選択により、コース看板は${label}のみ選択できます。`
-    : `Based on destination selection, only ${label==="DC1行き"?"DC1":"DC3"} courses are allowed.`;
+function courseGrpBlockMsg(grp){
+  const a=allowedCourseGrps();
+  if(!a) return "";
+  if(grp==="course_dc1_4f"&&!a.dc1_4f){
+    return lang==="ja"
+      ? "納品先にDC1 4Fが含まれていないため、DC1 4F行きコースは選択できません。"
+      : "DC1 4F courses are not allowed based on your destination selection.";
+  }
+  if(grp==="course_dc1_1f"&&!a.dc1_1f){
+    return lang==="ja"
+      ? "納品先にDC1（1F系）が含まれていないため、DC1 1F行きコースは選択できません。"
+      : "DC1 1F courses are not allowed based on your destination selection.";
+  }
+  if(grp==="course_dc3"&&!a.dc3){
+    return lang==="ja"
+      ? "納品先にDC3が含まれていないため、DC3行きコースは選択できません。"
+      : "DC3 courses are not allowed based on your destination selection.";
+  }
+  return "";
 }
 function anomRequired(){
   const a=[];
