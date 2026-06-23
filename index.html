@@ -107,7 +107,7 @@ const T = {
    searchTitle:"検索",fDate:"日付",all:"すべて",results:n=>`${n} 件`,csv:"CSVで出す",csvDone:"CSVを書き出しました",
    histTitle:"履歴",byTruck:"トラック別",byDest:"納品先別",choose:"選んでください",back:"選びなおす",loadings:n=>`${n} 件`,
    masterTitle:"マスタ変更",mDest:"納品先",mTruck:"トラック",mOki:"積み地",mAdd:"追加",mSave:"保存",mDelQ:"消しますか？",mEmpty:"登録なし",mNote:"ここの納品先・トラックが、横持ち登録画面の候補に出ます（全員で共有）。トラックは横持ち登録時に手入力すると自動でここに追加されます。増えすぎた古いものは、ここから消してください。",mOkiNote:"ここの積み地が、横持ち登録画面の候補に出ます。",
-   candTitle3:"DC3行き",candTitle1:"DC1行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
+   candTitle3:"DC3行き",candTitle1:"DC1 1F行き",candTitle1_4f:"DC1 4F行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
    tHome:"ホーム",tList:"一覧",tDash:"集計",tSearch:"検索",tHist:"履歴",tMaster:"マスタ",settings:"設定",language:"言語",
    loginTitle:"横持ち管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
    loading:"読み込み中…",you:"あなた"},
@@ -131,7 +131,7 @@ const T = {
    searchTitle:"Search",fDate:"Date",all:"All",results:n=>`${n} records`,csv:"Export CSV",csvDone:"CSV exported",
    histTitle:"History",byTruck:"By truck",byDest:"By destination",choose:"Choose",back:"Back",loadings:n=>`${n} loadings`,
    masterTitle:"Master data",mDest:"Destinations",mTruck:"Trucks",mOki:"Loading locations",mAdd:"Add",mSave:"Save",mDelQ:"Delete?",mEmpty:"None",mNote:"These appear as suggestions on the registration screen (shared with everyone). Trucks entered manually are added here automatically; delete old ones here to keep the list tidy.",mOkiNote:"These appear as candidates on the new-record screen.",
-   candTitle3:"To DC3",candTitle1:"To DC1",mCourseNote:"These course codes appear as candidates when capturing (saved on this device).",
+   candTitle3:"To DC3",candTitle1:"To DC1 1F",candTitle1_4f:"To DC1 4F",mCourseNote:"These course codes appear as candidates when capturing (saved on this device).",
    tHome:"Home",tList:"List",tDash:"Stats",tSearch:"Search",tHist:"History",tMaster:"Master",settings:"Settings",language:"Language",
    loginTitle:"Yokomochi Management System",loginSub:"Please log in.",email:"Email",pass:"Password",login:"Log in",loggingIn:"Checking…",loginNg:"Cannot log in: ",
    loading:"Loading…",you:"You"}
@@ -234,10 +234,14 @@ async function loadMaster(){
   }
 }
 const COURSE_DC3_DEFAULT=["AH","AG","7P","7Q","7R","AA","2P","2N","BA","BB","BF","9A","9B","9C","9F","4P","4T","4E","4F","4R","5D","3P","3サ","3シ","3X","3C","3D","0A","0B","0C","0D","0G","1E","1B","1C"];
-const COURSE_DC1_DEFAULT=["4＋","4＆","3％","3－","3！","3＃","3＆","3＊","3：","3＋","3＄","4－","4＊","4／","4：","4％","4＞","4”","4！","4＃","4＄","PKD","PQD","PKT","AU0","QQY","セケ1","PQT","LD","チ＠","ナ＠","L","ト＠","ツ＠","ノS","ア＠","イ＠","ウ＠","エ＠","オ＠","カ＠","キ＠","ク＠","ケ＠","コ＠","サ＠","シ＠","ス＠","セ＠","ソ＠","タ＠","テ＠","ヌ＠","ネ＠","ノ＠","ハ＠","フ＠","ヒ＠","ヘ＠","マ＠","ラ＠","ホ＠","J＠","5E","5Q","5R","6B","6S","6T","8A","LK","2L","5F","5G","ウ＃","0V"];
+const COURSE_DC1_4F_DEFAULT=["4＋","4＆","3％","3－","3！","3＃","3＆","3＊","3：","3＋","3＄","4－","4＊","4／","4：","4％","4＞","4”","4！","4＃","4＄"];
+const COURSE_DC1_1F_DEFAULT=["PKD","PQD","PKT","AU0","QQY","セケ1","PQT","LD","チ＠","ナ＠","L","ト＠","ツ＠","ノS","ア＠","イ＠","ウ＠","エ＠","オ＠","カ＠","キ＠","ク＠","ケ＠","コ＠","サ＠","シ＠","ス＠","セ＠","ソ＠","タ＠","テ＠","ヌ＠","ネ＠","ノ＠","ハ＠","フ＠","ヒ＠","ヘ＠","マ＠","ラ＠","ホ＠","J＠","5E","5Q","5R","6B","6S","6T","8A","LK","2L","5F","5G","ウ＃","0V"];
+const COURSE_DC1_DEFAULT=COURSE_DC1_4F_DEFAULT.concat(COURSE_DC1_1F_DEFAULT);
 function ensureCourseDefaults(){
   if(localStorage.getItem("m_course_dc3")===null) setMaster("course_dc3",COURSE_DC3_DEFAULT);
   if(localStorage.getItem("m_course_dc1")===null) setMaster("course_dc1",COURSE_DC1_DEFAULT);
+  if(localStorage.getItem("m_course_dc1_1f")===null) setMaster("course_dc1_1f",COURSE_DC1_1F_DEFAULT);
+  if(localStorage.getItem("m_course_dc1_4f")===null) setMaster("course_dc1_4f",COURSE_DC1_4F_DEFAULT);
 }
 function suggest(kind){
   const fromRec = [...new Set(records.map(r=> kind==="dest"?r.destination:r.truck).filter(Boolean))];
@@ -959,7 +963,8 @@ async function saveAddMore(id){
   const existingDest = r.destination ? String(r.destination).split("、").filter(Boolean) : [];
   const mergedDest = [...new Set([...existingDest, ...regDests])];
   const addPl = regCourses.reduce((s,c)=>s+(c.pl||0),0);
-  const addPlDc1 = regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
+  const addPlDc1 = regCourses.filter(c=>c.grp==="course_dc1_1f"||c.grp==="course_dc1_4f"||c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
+  const addPlDc1_4f = regCourses.filter(c=>c.grp==="course_dc1_4f").reduce((s,c)=>s+(c.pl||0),0);
   const addPlDc3 = regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
   try{
     await sb.from("courses").insert(regCourses.map(c=>({record_id:r.id,code:c.code,pl:c.pl,checked:false})));
@@ -968,6 +973,7 @@ async function saveAddMore(id){
       destination: mergedDest.join("、"),
       pallets: (r.pallets||0)+addPl,
       pl_dc1: (r.pl_dc1||0)+addPlDc1,
+      pl_dc1_4f: (r.pl_dc1_4f||0)+addPlDc1_4f,
       pl_dc3: (r.pl_dc3||0)+addPlDc3
     }).eq("id", r.id);
     toast(lang==="ja"?"追加しました":"Added");
@@ -1041,14 +1047,14 @@ function drawCandidates(){
       <div id="csel_${key}"></div></div></div>`;
   };
   const _listScroll={};
-  ["course_dc3","course_dc1"].forEach(k=>{
+  ["course_dc3","course_dc1_4f","course_dc1_1f"].forEach(k=>{
     const el=document.getElementById("candList_"+k);
     if(el) _listScroll[k]=el.scrollTop;
   });
-  area.innerHTML=grp("course_dc3",t().candTitle3)+grp("course_dc1",t().candTitle1);
+  area.innerHTML=grp("course_dc3",t().candTitle3)+grp("course_dc1_4f",t().candTitle1_4f)+grp("course_dc1_1f",t().candTitle1);
   drawCourses();
   window.scrollTo(0,_scrollY);
-  ["course_dc3","course_dc1"].forEach(k=>{
+  ["course_dc3","course_dc1_4f","course_dc1_1f"].forEach(k=>{
     const el=document.getElementById("candList_"+k);
     if(el && _listScroll[k]) el.scrollTop=_listScroll[k];
   });
@@ -1187,9 +1193,11 @@ function onQrScan(text){
   // 納品先によるコースグループ制限チェック（QRスキャン時）
   const allowed=allowedCourseGrp();
   if(allowed){
-    const inDc1=getMaster("course_dc1").includes(code);
+    const inDc1_4f=getMaster("course_dc1_4f").includes(code)||getMaster("course_dc1").includes(code);
+    const inDc1_1f=getMaster("course_dc1_1f").includes(code)||getMaster("course_dc1").includes(code);
     const inDc3=getMaster("course_dc3").includes(code);
-    const grpOk = (allowed==="course_dc1"&&inDc1)||(allowed==="course_dc3"&&inDc3)||(!inDc1&&!inDc3);
+    const inAnyDc1=inDc1_4f||inDc1_1f;
+    const grpOk=(allowed==="course_dc1_all"&&inAnyDc1)||(allowed==="course_dc1_4f"&&inDc1_4f)||(allowed==="course_dc1_1f"&&inDc1_1f)||(allowed==="course_dc3"&&inDc3)||(!inAnyDc1&&!inDc3);
     if(!grpOk){
       const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"グループが違うため追加できません：":"Wrong group, cannot add: ")+code; big.style.color="#fca5a5"; setTimeout(()=>{ if(big) big.style.color="#fff"; },2000); }
       return;
@@ -1237,10 +1245,10 @@ function drawCourseSel(key){
   el.innerHTML = html? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${html}</div>` : "";
 }
 function drawCourses(){
-  drawCourseSel("course_dc3"); drawCourseSel("course_dc1");
+  drawCourseSel("course_dc3"); drawCourseSel("course_dc1_4f"); drawCourseSel("course_dc1_1f");
   const el=document.getElementById("courseList");
   if(el){
-    let html=""; regCourses.forEach((c,i)=>{ if(c.grp!=="course_dc3"&&c.grp!=="course_dc1") html+=courseRow(c,i); });
+    let html=""; regCourses.forEach((c,i)=>{ if(c.grp!=="course_dc3"&&c.grp!=="course_dc1_4f"&&c.grp!=="course_dc1_1f") html+=courseRow(c,i); });
     if(html) html=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${html}</div>`;
     if(regCourses.length) html+=`<div style="text-align:right;font-weight:bold;color:#475569;margin-top:8px">${t().totalPl(regCourses.reduce((s,c)=>s+c.pl,0))}</div>`;
     el.innerHTML=html;
@@ -1275,19 +1283,20 @@ function priorityOkiMsg(violated){
 function allowedCourseGrp(){
   const hasDC1 = regDests.some(d=>d.indexOf("DC1")>=0);
   const hasDC3 = regDests.some(d=>d.indexOf("DC3")>=0);
-  if(hasDC1 && !hasDC3) return "course_dc1";
+  if(hasDC1 && !hasDC3) return "course_dc1_all"; // DC1系全て許可（4F・1F両方）
   if(hasDC3 && !hasDC1) return "course_dc3";
   return null; // 両方またはどちらもなし → 制限なし
 }
 function courseGrpBlocked(grp){
   const allowed=allowedCourseGrp();
   if(!allowed) return false;
+  if(allowed==="course_dc1_all") return grp==="course_dc3"; // DC1系（1F/4F）は両方許可
   return grp!==allowed;
 }
 function courseGrpBlockMsg(){
   const allowed=allowedCourseGrp();
   if(!allowed) return "";
-  const label=allowed==="course_dc1"?"DC1行き":"DC3行き";
+  const label=(allowed==="course_dc1_all"||allowed==="course_dc1_4f"||allowed==="course_dc1"||allowed==="course_dc1_1f")&&allowed!=="course_dc3"?"DC1行き":"DC3行き";
   return lang==="ja"
     ? `納品先の選択により、コース看板は${label}のみ選択できます。`
     : `Based on destination selection, only ${label==="DC1行き"?"DC1":"DC3"} courses are allowed.`;
@@ -1351,14 +1360,15 @@ async function saveRecord(){
   const btn=document.getElementById("saveBtn"); btn.disabled=true; btn.textContent=t().saving;
   const dest=regDests.join("、"), truck=document.getElementById("truck").value.trim();
   const pallets=regCourses.reduce((s,c)=>s+(c.pl||0),0), comment=document.getElementById("comment").value.trim();
-  const plDc1=regCourses.filter(c=>c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
+  const plDc1=regCourses.filter(c=>c.grp==="course_dc1_1f"||c.grp==="course_dc1_4f"||c.grp==="course_dc1").reduce((s,c)=>s+(c.pl||0),0);
+  const plDc1_4f=regCourses.filter(c=>c.grp==="course_dc1_4f").reduce((s,c)=>s+(c.pl||0),0);
   const plDc3=regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
   const wname=(user.email||"").split("@")[0]||t().you;
   if(truck) await ensureMasterValue("truck",truck);
   try{
     const ins=await sb.from("load_records").insert({
       worker_name:wname, worker_id:user.id, destination:dest, truck:truck, pallets:pallets, comment:comment,
-      oki_chi:regOki.join("、"), pl_dc1:plDc1, pl_dc3:plDc3,
+      oki_chi:regOki.join("、"), pl_dc1:plDc1, pl_dc3:plDc3, pl_dc1_4f:plDc1_4f,
       photo_taken_at:new Date().toISOString(), device_info:navigator.userAgent.slice(0,120)
     }).select().single();
     if(ins.error) throw ins.error;
@@ -1567,19 +1577,24 @@ function masterModeLabel(m){
   if(m==="truck") return t().mTruck;
   if(m==="oki_chi") return t().mOki;
   if(m==="course_dc3") return (lang==="ja"?"DC3行き コース記号":"DC3 course code");
+  if(m==="course_dc1_4f") return (lang==="ja"?"DC1 4F行き コース記号":"DC1 4F course code");
+  if(m==="course_dc1_1f") return (lang==="ja"?"DC1 1F行き コース記号":"DC1 1F course code");
   return (lang==="ja"?"DC1行き コース記号":"DC1 course code");
 }
 function renderMaster(){
   if(mf.mode==="volume"){ renderMasterVolume(); return; }
   const list=getMaster(mf.mode);
   const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
-  const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1")?t().mCourseNote:(mf.mode==="oki_chi"?t().mOkiNote:t().mNote);
+  const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?t().mCourseNote:(mf.mode==="oki_chi"?t().mOkiNote:t().mNote);
   app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
     <div style="display:flex;gap:8px;margin-bottom:8px">
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:8px">
-      ${tabBtn("course_dc3",t().candTitle3)}${tabBtn("course_dc1",t().candTitle1)}
+      ${tabBtn("course_dc3",t().candTitle3)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}
@@ -1588,10 +1603,10 @@ function renderMaster(){
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
       <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
     </div>
-    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1")?`<button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>`:""}
+    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`<button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>`:""}
     <p class="hint">${note}</p>
     <div>${list.length?list.map((v,i)=>{
-      const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1");
+      const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f");
       const col=isCourse?colorOf(mf.mode,v):"";
       const swatches=isCourse?`<div style="display:flex;gap:6px;margin-top:8px">`+MCOLORS.map(c=>`<button onclick="masterColor(${i},'${c.key}')" title="${c.label}" style="width:30px;height:30px;border-radius:8px;background:${c.bg};border:2px solid ${col===c.key?"#0f172a":c.bd};${c.key===""?"position:relative":""}">${c.key===""?'<span style=\"font-size:11px;color:#94a3b8\">なし</span>':(col===c.key?'<span style=\"color:#0f172a\">✓</span>':"")}</button>`).join("")+`</div>`:"";
       return `<div class="card" style="display:block">
@@ -1653,7 +1668,10 @@ function renderMasterVolume(){
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:8px">
-      ${tabBtn("course_dc3",t().candTitle3)}${tabBtn("course_dc1",t().candTitle1)}
+      ${tabBtn("course_dc3",t().candTitle3)}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}
@@ -1712,7 +1730,7 @@ async function masterAdd(){ const el=document.getElementById("mNew"); const v=el
   if(error||!data){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
   (masterRows[mf.mode]=masterRows[mf.mode]||[]).push({id:data[0].id,value:v,sort_order:so,color:""}); el.value=""; renderMaster();
 }
-const COURSE_SORT_ORDER={course_dc1:["red","blue",""],course_dc3:["yellow",""]};
+const COURSE_SORT_ORDER={course_dc1:["red","blue",""],course_dc1_4f:["red",""],course_dc1_1f:["blue",""],course_dc3:["yellow",""]};
 async function masterSortByColor(){
   const order=COURSE_SORT_ORDER[mf.mode]; if(!order) return;
   const allColors=MCOLORS.map(c=>c.key);
@@ -1760,7 +1778,7 @@ async function masterDel(i){ if(!confirm(t().mDelQ))return; const row=(masterRow
 }
 async function masterUpload(){
   if(!confirm(lang==="ja"?"この端末のマスタ（トラック・納品先・コース）を、クラウドに引き継ぎます。よろしいですか？":"Upload this device's master to the cloud?")) return;
-  const kinds=["truck","dest","course_dc1","course_dc3","oki_chi"]; let added=0;
+  const kinds=["truck","dest","course_dc1","course_dc1_1f","course_dc1_4f","course_dc3","oki_chi"]; let added=0;
   for(const k of kinds){
     let local=[]; try{ local=JSON.parse(localStorage.getItem("m_"+k)||"[]"); }catch(e){}
     const existing=new Set(getMaster(k));
