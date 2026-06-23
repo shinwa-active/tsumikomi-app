@@ -147,6 +147,20 @@ let isAdminAllowed = false;
 const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
 const DEST_ONLY_EMAILS = ["u123456@shinwa-active.co.jp"];
 const ADMIN_EMAILS = ["y.katou@shinwa-active.co.jp","u100422@shinwa-active.co.jp"];
+
+// 積み地ごとの所属ユーザー（注意喚起対象）
+const OKI_5F_EMAILS = ["u102568@shinwa-active.co.jp","u100636@shinwa-active.co.jp","u104853@shinwa-active.co.jp","u105203@shinwa-active.co.jp","u106837@shinwa-active.co.jp"];
+const OKI_3F_EMAILS = ["u101290@shinwa-active.co.jp","u106386@shinwa-active.co.jp"];
+const OKI_ATOM_EMAILS = ["u101257@shinwa-active.co.jp","u101833@shinwa-active.co.jp"];
+// ユーザーの基本積み地を返す（null=制限なし）
+function userHomeOki(){
+  if(!user||!user.email) return null;
+  const em=user.email.toLowerCase();
+  if(OKI_5F_EMAILS.includes(em)) return "DC2 5F";
+  if(OKI_3F_EMAILS.includes(em)) return "DC2 3F";
+  if(OKI_ATOM_EMAILS.includes(em)) return "アトム電器";
+  return null;
+}
 let user = null;
 let records = [];
 let view = {name:"home"};
@@ -968,7 +982,26 @@ function drawOki(){
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickOki(${i})" style="${regOki.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
     + (regOki.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regOki.map(esc).join("、")}</p>`:"");
 }
-function pickOki(i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return; const idx=regOki.indexOf(v); if(idx>=0) regOki.splice(idx,1); else regOki.push(v); drawOki(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function pickOki(i){
+  if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  const arr=getMaster("oki_chi"); const v=arr[i]; if(v==null) return;
+  const idx=regOki.indexOf(v);
+  if(idx>=0){
+    // 選択解除は常に許可
+    regOki.splice(idx,1);
+  } else {
+    // 追加時：ユーザーの基本積み地と異なる場合に注意喚起
+    const home=userHomeOki();
+    if(home && v!==home){
+      const msg=lang==="ja"
+        ? `通常の作業場所（${home}）とは異なる積み地「${v}」を選択しようとしています。\nよろしいですか？`
+        : `You are selecting a loading location "${v}" different from your usual location (${home}).\nContinue?`;
+      if(!confirm(msg)) return; // いいえ → 選択しない
+    }
+    regOki.push(v);
+  }
+  drawOki(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
+}
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
@@ -986,7 +1019,10 @@ function drawCandidates(){
         <button class="btn small" style="width:100%;margin-top:8px;background:#7c3aed;color:#fff;${mix.picks.length<2?"opacity:.5":""}" onclick="mixConfirm()">${lang==="ja"?"この組み合わせで1PL追加":"Add as 1 PL"}</button>
       </div>`:"";
     const fn = inMix?"mixPick":"addCand";
-    return `<div style="margin-bottom:8px">${head}${pickBar}
+    const grpBlocked = courseGrpBlocked(key);
+    const grpBlockStyle = grpBlocked ? "opacity:.35;pointer-events:none;filter:grayscale(1)" : "";
+    const grpBlockNote = grpBlocked ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:8px;padding:6px 10px;font-size:12px;margin-bottom:4px">🚫 ${courseGrpBlockMsg()}</div>` : "";
+    return `<div style="margin-bottom:8px">${head}${grpBlockNote}<div style="${grpBlockStyle}">${pickBar}
       <div id="candList_${key}" class="cand-list" style="overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:8px;background:#fafafa">
       ${arr.map((v,i)=>{
         const col=colorOf(key,v);
@@ -1002,7 +1038,7 @@ function drawCandidates(){
         <button class="btn small" style="padding:0 14px;${inMix?"background:#7c3aed;color:#fff":""}" onclick="addCourseG('${key}')">＋</button>
       </div>
       ${inMix?`<p class="hint" style="margin-top:4px">${lang==="ja"?"手入力した内容も、上の混載リストに追加されます。":"Manual entries are also added to the mix list above."}</p>`:""}
-      <div id="csel_${key}"></div></div>`;
+      <div id="csel_${key}"></div></div></div>`;
   };
   const _listScroll={};
   ["course_dc3","course_dc1"].forEach(k=>{
@@ -1045,7 +1081,7 @@ function drawDest(){
   area.innerHTML = arr.map((v,i)=>`<button class="chip" onclick="pickDest(${i})" style="${regDests.includes(v)?"background:#2563eb;color:#fff;border-color:#2563eb":""}">${esc(v)}</button>`).join("")
     + (regDests.length>1?`<p class="hint" style="width:100%;margin-top:6px">${lang==="ja"?"選択中：":"Selected: "}${regDests.map(esc).join("、")}</p>`:"");
 }
-function pickDest(i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function pickDest(i){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); const arr=getMaster("dest"); const v=arr[i]; if(v==null) return; const idx=regDests.indexOf(v); if(idx>=0) regDests.splice(idx,1); else regDests.push(v); drawDest(); drawCandidates(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function drawTruck(){
   const area=document.getElementById("truckArea"); if(!area) return;
   const inp=document.getElementById("truck");
@@ -1148,6 +1184,17 @@ function onQrScan(text){
     const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"直積みのため登録できません：":"Direct loading, cannot add: ")+code; big.style.color="#fca5a5"; setTimeout(()=>{ if(big) big.style.color="#fff"; },1600); }
     return;
   }
+  // 納品先によるコースグループ制限チェック（QRスキャン時）
+  const allowed=allowedCourseGrp();
+  if(allowed){
+    const inDc1=getMaster("course_dc1").includes(code);
+    const inDc3=getMaster("course_dc3").includes(code);
+    const grpOk = (allowed==="course_dc1"&&inDc1)||(allowed==="course_dc3"&&inDc3)||(!inDc1&&!inDc3);
+    if(!grpOk){
+      const big=document.getElementById("qrBig"); if(big){ big.textContent=(lang==="ja"?"グループが違うため追加できません：":"Wrong group, cannot add: ")+code; big.style.color="#fca5a5"; setTimeout(()=>{ if(big) big.style.color="#fff"; },2000); }
+      return;
+    }
+  }
   regCourses.push({code:code,pl:1}); qrSession.push(code);
   if(typeof drawCourses==="function") drawCourses();
   if(qrBeep) qrBeepPlay();
@@ -1165,6 +1212,8 @@ function closeQr(){
 function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; } const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function addCourseG(key){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  // 納品先によるコースグループ制限チェック
+  if(courseGrpBlocked(key)){ toast(courseGrpBlockMsg()); return; }
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
@@ -1220,6 +1269,28 @@ function checkPriorityOki(){
 function priorityOkiMsg(violated){
   if(lang!=="ja") return violated.map(v=>`${v}: Priority routes not done yet. Please include a priority course.`).join(" / ");
   return violated.map(v=>`${v} の第一優先（赤/黄/青）が未完了です。第一優先コースを含めてください。`).join("　");
+}
+/* ---- 納品先によるコースグループ制限 ---- */
+// 選択中の納品先からDC1のみ/DC3のみ/両方/制限なしを返す
+function allowedCourseGrp(){
+  const hasDC1 = regDests.some(d=>d.indexOf("DC1")>=0);
+  const hasDC3 = regDests.some(d=>d.indexOf("DC3")>=0);
+  if(hasDC1 && !hasDC3) return "course_dc1";
+  if(hasDC3 && !hasDC1) return "course_dc3";
+  return null; // 両方またはどちらもなし → 制限なし
+}
+function courseGrpBlocked(grp){
+  const allowed=allowedCourseGrp();
+  if(!allowed) return false;
+  return grp!==allowed;
+}
+function courseGrpBlockMsg(){
+  const allowed=allowedCourseGrp();
+  if(!allowed) return "";
+  const label=allowed==="course_dc1"?"DC1行き":"DC3行き";
+  return lang==="ja"
+    ? `納品先の選択により、コース看板は${label}のみ選択できます。`
+    : `Based on destination selection, only ${label==="DC1行き"?"DC1":"DC3"} courses are allowed.`;
 }
 function anomRequired(){
   const a=[];
