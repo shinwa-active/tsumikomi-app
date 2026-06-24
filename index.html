@@ -110,7 +110,8 @@ const T = {
    candTitle3:"DC3行き",candTitle1:"DC1 1F行き",candTitle1_4f:"DC1 4F行き",mCourseNote:"ここのコース記号が、撮影画面のコース候補に出ます（この端末に保存）。",
    tHome:"ホーム",tList:"一覧",tDash:"集計",tSearch:"検索",tHist:"履歴",tMaster:"マスタ",settings:"設定",language:"言語",
    loginTitle:"横持ち管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
-   loading:"読み込み中…",you:"あなた"},
+   loading:"読み込み中…",you:"あなた",
+   translateBtn:"英語に翻訳",translating:"翻訳中…",translateBack:"日本語に戻す"},
  en:{worker:"Worker",manager:"Manager",worksOffline:"Works offline",logout:"Log out",
    homeTitle:"Loading records",today:"Today",ken:"",capture:"Take photos & save",viewList:"View all records",
    offlineNote:"Even with no signal, records send once you're back online.",
@@ -134,7 +135,8 @@ const T = {
    candTitle3:"To DC3",candTitle1:"To DC1 1F",candTitle1_4f:"To DC1 4F",mCourseNote:"These course codes appear as candidates when capturing (saved on this device).",
    tHome:"Home",tList:"List",tDash:"Stats",tSearch:"Search",tHist:"History",tMaster:"Master",settings:"Settings",language:"Language",
    loginTitle:"Yokomochi Management System",loginSub:"Please log in.",email:"Email",pass:"Password",login:"Log in",loggingIn:"Checking…",loginNg:"Cannot log in: ",
-   loading:"Loading…",you:"You"}
+   loading:"Loading…",you:"You",
+   translateBtn:"Translate to English",translating:"Translating…",translateBack:"Back to Japanese"}
 };
 
 /* ---- 状態 ---- */
@@ -905,7 +907,11 @@ function renderRegister(){
     <input id="file" type="file" accept="image/*" capture="environment" multiple style="display:none">
     <button class="btn ghost" style="margin-top:8px" onclick="document.getElementById('file').click()">📷 ${t().take}</button>
 
-    <label>${t().fComment}</label><input id="comment" placeholder="${t().phComment}" maxlength="200">
+    <label>${t().fComment}</label>
+    <div style="position:relative">
+      <input id="comment" placeholder="${t().phComment}" maxlength="200">
+      <button id="translateBtn" class="btn small" style="margin-top:6px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;width:auto;font-size:13px" onclick="translateComment()">${t().translateBtn}</button>
+    </div>
     <div id="anom"></div>
   </div>
   <div style="position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;padding:14px">
@@ -1024,17 +1030,11 @@ function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
 
   // 積み地・納品先・トラックが揃うまでコースエリアをロック
-  // 追加画面の場合はトラック入力欄がないため、既存レコードのトラック値を参照する
   const truckEl=document.getElementById("truck");
-  let truckVal=truckEl?truckEl.value.trim():"";
-  if(!truckVal && view.name==="addmore"){
-    const addRec=records.find(x=>String(x.id)===String(view.id));
-    if(addRec && addRec.truck) truckVal=addRec.truck;
-  }
+  const truckVal=truckEl?truckEl.value.trim():"";
   const missing=[];
   if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading location");
-  // 追加画面では納品先は任意のためロック判定に含めない
-  if(view.name!=="addmore" && !regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
+  if(!regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
   if(!truckVal) missing.push(lang==="ja"?"トラック":"Truck");
   if(missing.length){
     area.innerHTML=`<div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;color:#64748b">
@@ -1129,14 +1129,22 @@ function pickDest(i){
     // 選択解除は常に許可
     regDests.splice(idx,1);
   } else {
+    // 追加画面の場合、既存レコードの納品先も含めてDC3との矛盾をチェック
+    let baseDests=regDests;
+    if(view.name==="addmore"){
+      const addRec=records.find(x=>String(x.id)===String(view.id));
+      const existingDests=(addRec&&addRec.destination)?String(addRec.destination).split("、").filter(Boolean):[];
+      baseDests=[...existingDests, ...regDests];
+    }
     // DC3を選ぼうとしたとき、既に他の納品先がある場合はブロック
-    if(v.indexOf("DC3")>=0 && regDests.length>0){
-      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません。先に他の納品先を外してください。":"DC3 cannot be combined with other destinations.");
+    if(v.indexOf("DC3")>=0 && baseDests.length>0){
+      const existing=baseDests.join("、");
+      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません"+(existing?"（既存："+existing+"）":"")+"。":"DC3 cannot be combined with other destinations.");
       return;
     }
-    // DC3以外を選ぼうとしたとき、既にDC3が選ばれている場合はブロック
-    if(v.indexOf("DC3")<0 && regDests.some(d=>d.indexOf("DC3")>=0)){
-      toast(lang==="ja"?"DC3が選択中のため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
+    // DC3以外を選ぼうとしたとき、既にDC3が含まれている場合はブロック
+    if(v.indexOf("DC3")<0 && baseDests.some(d=>d.indexOf("DC3")>=0)){
+      toast(lang==="ja"?"DC3が含まれているため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
       return;
     }
     regDests.push(v);
@@ -1303,6 +1311,18 @@ function addCourseG(key){
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
+  // 他のグループのマスタに同じコードが存在する場合はブロック
+  const allGrps=["course_dc3","course_dc1_4f","course_dc1_1f"];
+  for(const otherKey of allGrps){
+    if(otherKey===key) continue;
+    if(getMaster(otherKey).includes(c)){
+      const grpLabel={course_dc3:t().candTitle3,course_dc1_4f:t().candTitle1_4f,course_dc1_1f:t().candTitle1};
+      toast(lang==="ja"
+        ?`「${c}」は${grpLabel[otherKey]}のコースです。そちらから選択してください。`
+        :`"${c}" belongs to ${grpLabel[otherKey]}. Please select it from that section.`);
+      return;
+    }
+  }
   const partials=isPartialDirectLoadCode(c);
   if(partials.length){
     const locs=partials.map(r=>r.location).join("、");
@@ -2537,6 +2557,57 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
+/* ---------- コメント翻訳 ---------- */
+let _commentOriginal = null; // 翻訳前の元テキストを保持
+async function translateComment(){
+  const inp = document.getElementById("comment");
+  const btn = document.getElementById("translateBtn");
+  if(!inp || !btn) return;
+  // 翻訳済み状態なら元に戻す
+  if(_commentOriginal !== null){
+    inp.value = _commentOriginal;
+    _commentOriginal = null;
+    btn.textContent = t().translateBtn;
+    btn.style.background = "#f1f5f9";
+    btn.style.color = "#475569";
+    return;
+  }
+  const text = inp.value.trim();
+  if(!text){ toast(lang==="ja"?"コメントを入力してください":"Please enter a comment first"); return; }
+  btn.disabled = true;
+  btn.textContent = t().translating;
+  try{
+    const targetLang = lang==="ja" ? "英語" : "Japanese";
+    const resp = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        model:"claude-sonnet-4-6",
+        max_tokens:1000,
+        messages:[{role:"user",content:`以下のテキストを${targetLang}に翻訳してください。翻訳文のみを返してください。余計な説明は不要です。\n\n${text}`}]
+      })
+    });
+    const data = await resp.json();
+    const translated = (data.content||[]).find(b=>b.type==="text");
+    if(translated && translated.text){
+      _commentOriginal = text;
+      inp.value = translated.text.trim();
+      btn.disabled = false;
+      btn.textContent = t().translateBack;
+      btn.style.background = "#dbeafe";
+      btn.style.color = "#1d4ed8";
+    } else {
+      throw new Error("No translation returned");
+    }
+  } catch(e){
+    toast(lang==="ja"?"翻訳に失敗しました":"Translation failed");
+    btn.disabled = false;
+    btn.textContent = t().translateBtn;
+    btn.style.background = "#f1f5f9";
+    btn.style.color = "#475569";
+  }
+}
+
 /* ---------- 設定 ---------- */
 function renderSettings(){
   app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
@@ -2551,7 +2622,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,translateComment});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
