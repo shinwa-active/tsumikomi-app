@@ -1024,11 +1024,17 @@ function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
 
   // 積み地・納品先・トラックが揃うまでコースエリアをロック
+  // 追加画面の場合はトラック入力欄がないため、既存レコードのトラック値を参照する
   const truckEl=document.getElementById("truck");
-  const truckVal=truckEl?truckEl.value.trim():"";
+  let truckVal=truckEl?truckEl.value.trim():"";
+  if(!truckVal && view.name==="addmore"){
+    const addRec=records.find(x=>String(x.id)===String(view.id));
+    if(addRec && addRec.truck) truckVal=addRec.truck;
+  }
   const missing=[];
   if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading location");
-  if(!regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
+  // 追加画面では納品先は任意のためロック判定に含めない
+  if(view.name!=="addmore" && !regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
   if(!truckVal) missing.push(lang==="ja"?"トラック":"Truck");
   if(missing.length){
     area.innerHTML=`<div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;color:#64748b">
