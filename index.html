@@ -2614,6 +2614,7 @@ async function topbarTranslate(){
 }
 
 /* ---------- 設定 ---------- */
+function renderSettings(){
   app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
     <div class="panel"><b>🌐 ${t().language}</b>
       <div style="display:flex;gap:10px;margin-top:10px">
