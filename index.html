@@ -704,8 +704,7 @@ function go(name,params){
     }
     pendingCompleteId=null;
   }
-  _commentOriginal=null; // 画面遷移時に翻訳状態をリセット
-  view=Object.assign({name},params||{}); render(); window.scrollTo(0,0);
+  view=Object.assign({name},params||{}); _commentOriginal=null; render(); window.scrollTo(0,0);
 }
 function topbar(){
   return `<div class="topbar">
@@ -1127,7 +1126,6 @@ function pickDest(i){
   const arr=getMaster("dest"); const v=arr[i]; if(v==null) return;
   const idx=regDests.indexOf(v);
   if(idx>=0){
-    // 選択解除は常に許可
     regDests.splice(idx,1);
   } else {
     // 追加画面では既存レコードの納品先も含めてDC3の矛盾チェック
@@ -1311,9 +1309,8 @@ function addCourseG(key){
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
   // 他のグループのマスタに同じコードが存在する場合はブロック
-  const allGrps=["course_dc3","course_dc1_4f","course_dc1_1f"];
   const grpLabel={course_dc3:"DC3行き",course_dc1_4f:"DC1 4F行き",course_dc1_1f:"DC1 1F行き"};
-  for(const otherKey of allGrps){
+  for(const otherKey of ["course_dc3","course_dc1_4f","course_dc1_1f"]){
     if(otherKey===key) continue;
     if(getMaster(otherKey).includes(c)){
       toast(lang==="ja"
@@ -1524,7 +1521,9 @@ async function renderDetail(id){
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
   if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
   const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,maskName(r.worker_name)],
-    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
+    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)]];
+  const commentVal = r.comment||t().none;
+  const commentRow = `<div class="row"><div class="k">${t().iComment}</div><div id="detailComment" style="font-weight:500">${esc(commentVal)}</div></div>`;
   let courseBox="";
   if(courses.length){
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
@@ -1543,7 +1542,7 @@ async function renderDetail(id){
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">${photosHtml}</div>
-    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}</div>
+    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}${commentRow}</div>
     ${courseBox}${actions}${adminRow}
   </div>`;
 }
@@ -2556,46 +2555,58 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
+/* ---------- 設定 ---------- */
 /* ---------- ENボタン：コメント翻訳 ---------- */
 let _commentOriginal = null;
 async function topbarTranslate(){
-  const inp = document.getElementById("comment");
-  if(!inp){
-    // 登録画面以外は設定へ
-    go("settings"); return;
-  }
   const btn = document.getElementById("topbarTransBtn");
+
+  // --- 明細画面：detailCommentを翻訳 ---
+  const detailEl = document.getElementById("detailComment");
+  // --- 登録・追加画面：input#commentを翻訳 ---
+  const inputEl = document.getElementById("comment");
+
+  const targetEl = detailEl || inputEl;
+  if(!targetEl){ go("settings"); return; }
+
+  const isInput = !!inputEl && !detailEl;
+  const getText = () => isInput ? targetEl.value.trim() : targetEl.textContent.trim();
+  const setText = (v) => { if(isInput) targetEl.value=v; else targetEl.textContent=v; };
+  const noneTexts = [t().none, "(なし)", "(none)"];
+
   // 翻訳済みなら元に戻す
   if(_commentOriginal !== null){
-    inp.value = _commentOriginal;
+    setText(_commentOriginal);
     _commentOriginal = null;
-    if(btn){ btn.textContent = "⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; }
+    if(btn){ btn.textContent="⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; btn.disabled=false; }
     return;
   }
-  const text = inp.value.trim();
-  if(!text){
-    toast(lang==="ja"?"コメントを入力してください":"Please enter a comment first");
+
+  const text = getText();
+  if(!text || noneTexts.includes(text)){
+    toast(lang==="ja"?"コメントがありません":"No comment to translate");
     return;
   }
+
   if(btn){ btn.disabled=true; btn.textContent=lang==="ja"?"翻訳中…":"…"; }
+  const targetLang = lang==="ja" ? "英語" : "日本語";
   try{
-    const targetLang = lang==="ja" ? "英語" : "日本語";
     const resp = await fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         model:"claude-sonnet-4-6",
         max_tokens:500,
-        messages:[{role:"user",content:`以下のテキストを${targetLang}に翻訳してください。翻訳文のみを返してください。\n\n${text}`}]
+        messages:[{role:"user",content:`以下のテキストを${targetLang}に翻訳してください。翻訳文のみを返してください。余計な説明は不要です。\n\n${text}`}]
       })
     });
     const data = await resp.json();
     const translated = (data.content||[]).find(b=>b.type==="text");
     if(translated && translated.text){
       _commentOriginal = text;
-      inp.value = translated.text.trim();
+      setText(translated.text.trim());
       if(btn){ btn.disabled=false; btn.textContent="↩ 元に戻す"; btn.style.background="#1d4ed8"; }
-    } else { throw new Error(); }
+    } else { throw new Error("no content"); }
   } catch(e){
     toast(lang==="ja"?"翻訳に失敗しました":"Translation failed");
     if(btn){ btn.disabled=false; btn.textContent="⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; }
@@ -2603,7 +2614,6 @@ async function topbarTranslate(){
 }
 
 /* ---------- 設定 ---------- */
-function renderSettings(){
   app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
     <div class="panel"><b>🌐 ${t().language}</b>
       <div style="display:flex;gap:10px;margin-top:10px">
