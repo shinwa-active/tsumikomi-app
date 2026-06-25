@@ -851,26 +851,39 @@ async function render(){
         <div class="home-left">
           ${(!isViewOnly&&!isDestOnly)?`<button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>`:""}
           ${(!isViewOnly&&!isDestOnly)?renderDirectLoad():""}
-          <div style="display:flex;gap:8px;margin-top:8px;align-items:stretch">
-            <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a">
-              <div style="font-size:12px;font-weight:bold;margin-bottom:4px">${t().today}</div>
-              ${(()=>{
-                const dests=getMaster("dest");
-                if(!dests.length) return `<div style="font-size:22px;font-weight:800;text-align:center">${todays.length}<span style="font-size:13px"> ${t().ken}</span></div>`;
-                return dests.map(d=>{
-                  const total=todays.filter(r=>String(r.destination||"").split("、").includes(d)).length;
-                  const confirmed=todays.filter(r=>String(r.destination||"").split("、").includes(d)&&r.dest_confirmed).length;
-                  const color=total===0?"#94a3b8":confirmed===total?"#15803d":"#1e3a8a";
-                  return `<div style="display:flex;justify-content:space-between;font-size:13px;line-height:1.8"><span style="color:#475569">${esc(d)}</span><span style="font-weight:bold;color:${color}">${confirmed}/${total}${lang==="ja"?"件":""}</span></div>`;
-                }).join("");
-              })()}
-            </div>
-            <button class="btn ghost" style="flex:1;margin:0;line-height:1.6;font-size:17px" onclick="go('list')">📋 ${lang==="ja"?"横持ち<br>一覧を見る":"View all<br>records"}</button>
+
+          <!-- 本日の横持ち：全幅・大きく -->
+          <div class="panel" style="margin-top:10px;background:#eff6ff;border:2px solid #bfdbfe;padding:18px 20px">
+            <div style="font-size:14px;font-weight:800;color:#1e40af;margin-bottom:12px;letter-spacing:.02em">${t().today}</div>
+            ${(()=>{
+              const dests=getMaster("dest");
+              if(!dests.length) return `<div style="font-size:36px;font-weight:900;text-align:center;color:#1e3a8a">${todays.length}<span style="font-size:18px;font-weight:700"> ${t().ken}</span></div>`;
+              return dests.map(d=>{
+                const total=todays.filter(r=>String(r.destination||"").split("、").includes(d)).length;
+                const confirmed=todays.filter(r=>String(r.destination||"").split("、").includes(d)&&r.dest_confirmed).length;
+                const color=total===0?"#94a3b8":confirmed===total?"#15803d":"#1d4ed8";
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #dbeafe">
+                  <span style="font-size:17px;font-weight:700;color:#334155">${esc(d)}</span>
+                  <span style="font-size:22px;font-weight:900;color:${color}">${confirmed}/${total}<span style="font-size:14px;font-weight:700">${lang==="ja"?"件":""}</span></span>
+                </div>`;
+              }).join("")+"</div>";
+            })()}
           </div>
-          ${(!isViewOnly&&!isDestOnly)?`<button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>`:""}
-          ${(!isViewOnly&&!isDestOnly)?`<button class="btn" style="margin-top:8px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>`:""}
-          ${(isViewOnly||isDestOnly)?`<button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>`:""}
-          <button class="btn ghost small" style="margin:12px auto 0;width:auto" onclick="logout()">${t().logout}</button>
+
+          <!-- 横持ち一覧を見る（横長ボタン） -->
+          <button class="btn ghost" style="margin-top:10px;font-size:19px;font-weight:800;padding:20px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="go('list')">
+            📋 ${lang==="ja"?"横持ち　一覧を見る":"View all records"}
+          </button>
+
+          <!-- パレット残り合計（横長ボタン） -->
+          <button class="btn teal" style="margin-top:8px;font-size:19px;padding:20px" onclick="go('pallet')">
+            📦 ${lang==="ja"?"パレット　残り合計":"Pallets total"} <span style="font-size:26px;font-weight:900;margin-left:8px">${palTotal}</span> ${lang==="ja"?"PL":"PL"}
+          </button>
+
+          ${(!isViewOnly&&!isDestOnly)?`<button class="btn" style="margin-top:8px;background:#7c3aed;font-size:19px;padding:20px" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>`:""}
+
+          <!-- ログアウト -->
+          <button class="btn ghost small" style="margin:14px auto 0;width:auto;font-size:15px;padding:12px 24px" onclick="logout()">${t().logout}</button>
         </div>
         <div class="home-right">
           ${board}
