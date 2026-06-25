@@ -1511,7 +1511,7 @@ async function renderDetail(id){
   if(!r){ go(role==="worker"?"list":"search"); return; }
   const courses=(r.courses||[]).slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
   // PLチェック数の取得（checked_atに数値文字列で保存）
-  const getCnt=c=>{ if(!c.checked) return 0; const n=parseInt(c.checked_at); return (!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; };
+  // getCntはグローバル関数を使用
   const allChecked = courses.length===0 || courses.every(c=>getCnt(c)>=(c.pl||1));
   let photosHtml=""; window._photoUrls=[];
   if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
@@ -1594,6 +1594,9 @@ async function markComplete(id){
 }
 // PLごとの個別ボタン：押したインデックスをトグル
 // i番目が未チェック→チェック、i番目がチェック済み→i番目まで戻す
+// PLチェック数取得（checked_atに数値文字列で記録）
+function getCnt(c){ if(!c||!c.checked) return 0; const n=parseInt(c.checked_at); return (!isNaN(n)&&n>=1&&n<=(c.pl||1))?n:(c.pl||1); }
+
 async function tapCoursePl(cid, rid, tapIdx, pl){
   if(isViewOnly) return viewOnlyBlock();
   const rec=records.find(x=>String(x.id)===String(rid));
