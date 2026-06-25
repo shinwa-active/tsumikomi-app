@@ -1528,11 +1528,18 @@ async function renderDetail(id){
       const pl=c.pl||1;
       const cnt=getCnt(c);
       const allDone=cnt>=pl;
+      // 積込完了後のみチェックボタンを表示、完了前はコース名とPL数のみ
+      if(!canCheck){
+        return `<div id="courseRow_${c.id}" style="border:2px solid #e2e8f0;background:#fff;border-radius:12px;padding:12px;margin-top:8px;display:flex;align-items:center;gap:8px;">
+          <b style="font-size:17px">${esc(c.code)}</b>
+          <span style="margin-left:auto;color:#64748b;font-size:14px">${pl} PL</span>
+        </div>`;
+      }
       // PL数分の大きなボタンを横並びで表示
       const plBtns=Array.from({length:pl},(_,i)=>{
         const checked=i<cnt;
-        return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})" ${!canCheck?"disabled":""}
-          style="flex:1;min-height:64px;border:2px solid ${checked?"#0d9488":"#cbd5e1"};background:${checked?"#0d9488":"#f8fafc"};border-radius:12px;color:${checked?"#fff":"#94a3b8"};font-size:28px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;${!canCheck?"opacity:.5":""}">
+        return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})"
+          style="flex:1;min-height:64px;border:2px solid ${checked?"#0d9488":"#cbd5e1"};background:${checked?"#0d9488":"#f8fafc"};border-radius:12px;color:${checked?"#fff":"#94a3b8"};font-size:28px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;">
           ${checked?"✓":"○"}
         </button>`;
       }).join("");
@@ -1545,7 +1552,7 @@ async function renderDetail(id){
       </div>`;
     }).join("");
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
-      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
+      ${canCheck?`<p class="hint">${t().tapCheck}</p>`:""}
       ${courseRows}</div>`;
   }
   let actions="";
