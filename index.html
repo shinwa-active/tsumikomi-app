@@ -872,10 +872,10 @@ async function render(){
             })()}
           </div>`:""}
 
-          <!-- 横持ち一覧を見る（横長ボタン） -->
-          <button class="btn ghost" style="margin-top:10px;font-size:19px;font-weight:800;padding:20px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="go('list')">
+          <!-- 横持ち一覧を見る（閲覧用・納品先用のみ表示） -->
+          ${(isViewOnly||isDestOnly)?`<button class="btn ghost" style="margin-top:10px;font-size:19px;font-weight:800;padding:20px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="go('list')">
             📋 ${lang==="ja"?"横持ち　一覧を見る":"View all records"}
-          </button>
+          </button>`:""}
 
           <!-- パレット残り合計（横長ボタン） -->
           <button class="btn teal" style="margin-top:8px;font-size:19px;padding:20px" onclick="go('pallet')">
@@ -917,8 +917,28 @@ let regPhotos=[], regCourses=[], regOki=[], regDests=[];
 function renderRegister(){
   regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
+  // 本日登録済みのレコードを取得（追加で登録ボタン用）
+  const todayRecs=records.filter(r=>isToday(r.created_at)&&!r.deleted_at);
+  const addMoreSection=(!isViewOnly&&!isDestOnly&&todayRecs.length)?`
+    <div class="panel" style="margin-bottom:4px;background:#f8fafc;border:2px solid #e2e8f0;padding:14px">
+      <div style="font-weight:800;font-size:16px;color:#334155;margin-bottom:10px">➕ ${lang==="ja"?"追加で登録（本日の一覧から選ぶ）":"Add to existing record"}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${todayRecs.map(r=>`<button onclick="go('addmore',{id:'${r.id}'})" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;text-align:left;cursor:pointer;font-size:15px">
+          <span style="font-weight:700;color:#0f172a">${esc(r.truck||"—")}</span>
+          <span style="color:#64748b;margin-left:8px">${esc(r.destination||"—")}</span>
+          <span style="color:#94a3b8;font-size:13px;margin-left:8px">${hhmm(r.created_at)}</span>
+        </button>`).join("")}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin:12px 0 4px">
+      <div style="flex:1;height:1px;background:#e2e8f0"></div>
+      <span style="font-size:13px;color:#94a3b8;font-weight:600">${lang==="ja"?"または新規登録":"or new record"}</span>
+      <div style="flex:1;height:1px;background:#e2e8f0"></div>
+    </div>
+  `:"";
   app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
+    ${addMoreSection}
     <label>${t().fOki}</label>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
