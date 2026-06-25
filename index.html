@@ -852,8 +852,8 @@ async function render(){
           ${(!isViewOnly&&!isDestOnly)?`<button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>`:""}
           ${(!isViewOnly&&!isDestOnly)?renderDirectLoad():""}
 
-          <!-- 本日の横持ち：全幅・大きく -->
-          <div class="panel" style="margin-top:10px;background:#eff6ff;border:2px solid #bfdbfe;padding:18px 20px">
+          <!-- 本日の横持ち：閲覧用・納品先用のみ表示（作業者は非表示） -->
+          ${(isViewOnly||isDestOnly)?`<div class="panel" style="margin-top:10px;background:#eff6ff;border:2px solid #bfdbfe;padding:18px 20px">
             <div style="font-size:14px;font-weight:800;color:#1e40af;margin-bottom:12px;letter-spacing:.02em">${t().today}</div>
             ${(()=>{
               const dests=getMaster("dest");
@@ -862,13 +862,15 @@ async function render(){
                 const total=todays.filter(r=>String(r.destination||"").split("、").includes(d)).length;
                 const confirmed=todays.filter(r=>String(r.destination||"").split("、").includes(d)&&r.dest_confirmed).length;
                 const color=total===0?"#94a3b8":confirmed===total?"#15803d":"#1d4ed8";
+                // North/South を除去して表示（例：DC1 1F北North → DC1 1F北）
+                const dispName=d.replace(/North|South/g,"").trim();
                 return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #dbeafe">
-                  <span style="font-size:17px;font-weight:700;color:#334155">${esc(d)}</span>
+                  <span style="font-size:17px;font-weight:700;color:#334155">${esc(dispName)}</span>
                   <span style="font-size:22px;font-weight:900;color:${color}">${confirmed}/${total}<span style="font-size:14px;font-weight:700">${lang==="ja"?"件":""}</span></span>
                 </div>`;
               }).join("")+"</div>";
             })()}
-          </div>
+          </div>`:""}
 
           <!-- 横持ち一覧を見る（横長ボタン） -->
           <button class="btn ghost" style="margin-top:10px;font-size:19px;font-weight:800;padding:20px;display:flex;align-items:center;justify-content:center;gap:10px" onclick="go('list')">
