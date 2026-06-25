@@ -2220,57 +2220,56 @@ function renderDashboard(){
     return {label:d.date.slice(5),val:sh>0?parseFloat((d.recs.length/sh).toFixed(2)):0};
   });
 
-  const tabBtn=(k,label)=>`<button class="btn small" style="flex:1;padding:6px 4px;font-size:12px;${dashPeriod===k?"":"background:#f1f5f9;color:#475569"}" onclick="dashPeriod='${k}';renderDashboard()">${label}</button>`;
+  const tabBtn=(k,label)=>`<button style="flex:1;padding:7px 4px;font-size:12px;font-weight:700;border:2px solid ${dashPeriod===k?"var(--blue)":"#e2e8f0"};border-radius:8px;background:${dashPeriod===k?"var(--blue)":"#f8fafc"};color:${dashPeriod===k?"#fff":"#475569"};cursor:pointer;white-space:nowrap" onclick="dashPeriod='${k}';renderDashboard()">${label}</button>`;
 
-  app.innerHTML=topbar()+header(lang==="ja"?"集計ダッシュボード":"Dashboard")+`<div class="pad">
-    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+  app.innerHTML=topbar()+header(lang==="ja"?"集計ダッシュボード":"Dashboard")+`<div style="padding:10px 12px 100px">
+    <div style="display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap">
       ${tabBtn("today",lang==="ja"?"今日":"Today")}${tabBtn("week",lang==="ja"?"今週":"Week")}${tabBtn("7days",lang==="ja"?"直近7日":"7 days")}${tabBtn("custom",lang==="ja"?"期間指定":"Custom")}
     </div>
-    ${dashPeriod==="custom"?`<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-      <input type="date" value="${dashFrom}" onchange="dashFrom=this.value;renderDashboard()" style="flex:1">
-      <span>〜</span>
-      <input type="date" value="${dashTo}" onchange="dashTo=this.value;renderDashboard()" style="flex:1">
+    ${dashPeriod==="custom"?`<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+      <input type="date" value="${dashFrom}" onchange="dashFrom=this.value;renderDashboard()" style="flex:1;padding:7px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px">
+      <span style="font-size:13px">〜</span>
+      <input type="date" value="${dashTo}" onchange="dashTo=this.value;renderDashboard()" style="flex:1;padding:7px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px">
     </div>`:""}
 
-    <div class="grid2" style="gap:8px;margin-bottom:12px">
-      <div class="stat"><div class="hint">${lang==="ja"?"積込件数":"Loads"}</div><div class="n" style="color:#2563eb">${total}</div></div>
-      <div class="stat"><div class="hint">${lang==="ja"?"生産性(件/h)":"Prod.(loads/h)"}</div><div class="n" style="color:#d97706">${prod.toFixed(1)}</div></div>
+    <div class="grid2" style="gap:6px;margin-bottom:10px">
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px"><div style="font-size:11px;color:#64748b">${lang==="ja"?"積込件数":"Loads"}</div><div style="font-size:26px;font-weight:800;color:#2563eb">${total}</div></div>
+      <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px"><div style="font-size:11px;color:#64748b">${lang==="ja"?"生産性(件/h)":"Prod.(loads/h)"}</div><div style="font-size:26px;font-weight:800;color:#d97706">${prod.toFixed(1)}</div></div>
     </div>
 
-    <div class="panel" style="margin-bottom:12px">
-      <b style="color:#1e3a5f">⏰ ${lang==="ja"?"時間帯別件数":"Loads by hour"}</b>
-      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"1時間刻み（件数0の時間帯は省略）":"1-hour intervals"}</p>
-      ${svgBar(hourData,"label","val","#2563eb",160)}
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:8px">
+      <b style="font-size:13px;color:#1e3a5f">⏰ ${lang==="ja"?"時間帯別件数":"Loads by hour"}</b>
+      <p style="font-size:11px;color:#94a3b8;margin:2px 0 6px">${lang==="ja"?"1時間刻み":"1-hour intervals"}</p>
+      ${svgBar(hourData,"label","val","#2563eb",120)}
     </div>
 
-    <div class="panel" style="margin-bottom:12px">
-      <b style="color:#1e3a5f">🚚 ${lang==="ja"?"トラック別件数（上位10台）":"Loads by truck (top 10)"}</b>
-      <div style="margin-top:8px">
-        ${truckData.map(d=>{const maxV=Math.max(...truckData.map(x=>x.val),1); return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <div style="width:72px;font-size:12px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.label)}</div>
-          <div style="flex:1;background:#f1f5f9;border-radius:999px;height:20px;position:relative">
-            <div style="width:${Math.round(d.val/maxV*100)}%;background:#2563eb;border-radius:999px;height:100%;display:flex;align-items:center;padding-left:6px">
-              <span style="color:#fff;font-size:11px;font-weight:bold">${d.val}</span>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:8px">
+      <b style="font-size:13px;color:#1e3a5f">🚚 ${lang==="ja"?"トラック別（上位10台）":"By truck (top 10)"}</b>
+      <div style="margin-top:6px">
+        ${truckData.map(d=>{const maxV=Math.max(...truckData.map(x=>x.val),1); return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <div style="width:60px;font-size:11px;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.label)}</div>
+          <div style="flex:1;background:#f1f5f9;border-radius:999px;height:16px;position:relative">
+            <div style="width:${Math.round(d.val/maxV*100)}%;background:#2563eb;border-radius:999px;height:100%;display:flex;align-items:center;padding-left:5px">
+              <span style="color:#fff;font-size:10px;font-weight:bold">${d.val}</span>
             </div>
           </div>
-        </div>`;}).join("")||`<p class="hint">${lang==="ja"?"データなし":"No data"}</p>`}
+        </div>`;}).join("")||`<p style="font-size:12px;color:#94a3b8">${lang==="ja"?"データなし":"No data"}</p>`}
       </div>
     </div>
 
-    <div class="panel" style="margin-bottom:12px">
-      <b style="color:#1e3a5f">🏭 ${lang==="ja"?"積み地別件数":"Loads by location"}</b>
-      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"複数積み地の場合は各々カウント":"Multi-location records counted per location"}</p>
-      ${svgBar(okiData,"label","val","#7c3aed",140)}
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:8px">
+      <b style="font-size:13px;color:#1e3a5f">🏭 ${lang==="ja"?"積み地別件数":"By location"}</b>
+      <p style="font-size:11px;color:#94a3b8;margin:2px 0 6px">${lang==="ja"?"複数積み地は各々カウント":"Multi-loc counted each"}</p>
+      ${svgBar(okiData,"label","val","#7c3aed",110)}
     </div>
 
-    <div class="panel" style="margin-bottom:12px">
-      <b style="color:#1e3a5f">📈 ${lang==="ja"?"生産性推移（直近7日）":"Productivity trend (last 7 days)"}</b>
-      <p class="hint" style="margin:2px 0 8px">${lang==="ja"?"件数÷稼働時間（最初〜最後の登録時刻の差）":"Loads ÷ active hours"}</p>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:8px">
+      <b style="font-size:13px;color:#1e3a5f">📈 ${lang==="ja"?"生産性推移（直近7日）":"Productivity (7 days)"}</b>
       ${svgLine(prodTrend,"label","val","#059669")}
     </div>
 
-    <button class="btn green" style="width:100%;margin-bottom:8px" onclick="dashExportCsv()">⬇ CSV ${lang==="ja"?"ダウンロード":"Download"} (${periodLabel})</button>
-    <button class="btn" style="width:100%;background:#1e3a5f;color:#fff;margin-bottom:8px" onclick="go('route_records')">📋 ${lang==="ja"?"出荷量実績の入力・確認":"Volume Records"}</button>
+    <button style="width:100%;padding:10px;font-size:13px;font-weight:700;border:none;border-radius:10px;background:var(--green);color:#fff;cursor:pointer;margin-bottom:6px" onclick="dashExportCsv()">⬇ CSV ${lang==="ja"?"ダウンロード":"Download"} (${periodLabel})</button>
+    <button style="width:100%;padding:10px;font-size:13px;font-weight:700;border:none;border-radius:10px;background:#1e3a5f;color:#fff;cursor:pointer" onclick="go('route_records')">📋 ${lang==="ja"?"出荷量実績の入力・確認":"Volume Records"}</button>
   </div>`+tabbar();
 }
 
@@ -2278,14 +2277,16 @@ function renderDashboard(){
 let sf={day:"",dest:"",truck:""};
 function renderSearch(){
   const days=[...new Set(records.map(r=>dayLabel(r.created_at)))];
-  const pick=(label,key,arr)=>`<div style="margin-bottom:8px"><div style="font-weight:bold;font-size:14px;color:#475569;margin-bottom:4px">${label}</div>
-    <button class="chip ${!sf[key]?"on":""}" onclick="sf['${key}']='';renderSearch()">${t().all}</button>
-    ${arr.map(v=>`<button class="chip ${sf[key]===v?"on":""}" onclick="sf['${key}']=${JSON.stringify(v).replace(/"/g,'&quot;')};renderSearch()">${esc(v)}</button>`).join("")}</div>`;
+  const pick=(label,key,arr)=>`<div style="margin-bottom:8px"><div style="font-weight:700;font-size:12px;color:#475569;margin-bottom:4px">${label}</div>
+    <button style="display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:600;margin:3px 3px 0 0;border:2px solid ${!sf[key]?"var(--blue)":"#e2e8f0"};background:${!sf[key]?"var(--blue)":"#f8fafc"};color:${!sf[key]?"#fff":"#475569"};cursor:pointer" onclick="sf['${key}']='';renderSearch()">${t().all}</button>
+    ${arr.map(v=>`<button style="display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:600;margin:3px 3px 0 0;border:2px solid ${sf[key]===v?"var(--blue)":"#e2e8f0"};background:${sf[key]===v?"var(--blue)":"#f8fafc"};color:${sf[key]===v?"#fff":"#475569"};cursor:pointer" onclick="sf['${key}']=${JSON.stringify(v).replace(/"/g,'&quot;')};renderSearch()">${esc(v)}</button>`).join("")}</div>`;
   const res=records.filter(r=>(!sf.day||dayLabel(r.created_at)===sf.day)&&(!sf.dest||r.destination===sf.dest)&&(!sf.truck||r.truck===sf.truck));
-  app.innerHTML=topbar()+header(t().searchTitle)+`<div class="pad" id="sv">
+  app.innerHTML=topbar()+header(t().searchTitle)+`<div style="padding:10px 12px 100px" id="sv">
     ${pick(t().fDate,"day",days)}${pick(t().fDest,"dest",suggest("dest"))}${pick(t().fTruck,"truck",suggest("truck"))}
     <div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0">
-      <b>${t().results(res.length)}</b><button class="btn green small" onclick="exportCsv()">⬇ ${t().csv}</button></div>
+      <b style="font-size:13px">${t().results(res.length)}</b>
+      <button style="padding:7px 14px;font-size:12px;font-weight:700;border:none;border-radius:8px;background:var(--green);color:#fff;cursor:pointer" onclick="exportCsv()">⬇ ${t().csv}</button>
+    </div>
     <div id="sres">${t().loading}</div>
   </div>`+tabbar();
   listHtml(res).then(h=>{const e=document.getElementById("sres"); if(e)e.innerHTML=h;});
@@ -2337,22 +2338,22 @@ function renderDeletedList(){
   </div>`).join("");
 }
 function renderHistory(){
-  const subBtn=(k,label)=>`<button class="btn small" style="flex:1;${hf.tab===k?"":"background:#f1f5f9;color:#475569"}" onclick="hf.tab='${k}';hf.picked=null;renderHistory()">${label}</button>`;
-  const adminTabs=isAdminAllowed?`<div style="display:flex;gap:8px;margin-bottom:12px">
-      ${subBtn("records","📋 "+(lang==="ja"?"積込履歴":"Loads"))}
-      ${subBtn("log","📝 "+(lang==="ja"?"操作ログ":"Logs"))}
-      ${subBtn("deleted","🗑 "+(lang==="ja"?"削除済み":"Deleted"))}
+  const cBtn=(k,cur,label,onclick)=>`<button style="flex:1;padding:7px 4px;font-size:12px;font-weight:700;border:2px solid ${cur===k?"var(--blue)":"#e2e8f0"};border-radius:8px;background:${cur===k?"var(--blue)":"#f8fafc"};color:${cur===k?"#fff":"#475569"};cursor:pointer" onclick="${onclick}">${label}</button>`;
+  const adminTabs=isAdminAllowed?`<div style="display:flex;gap:5px;margin-bottom:8px">
+      ${cBtn("records",hf.tab,"📋 "+(lang==="ja"?"積込履歴":"Loads"),`hf.tab='records';hf.picked=null;renderHistory()`)}
+      ${cBtn("log",hf.tab,"📝 "+(lang==="ja"?"操作ログ":"Logs"),`hf.tab='log';hf.picked=null;renderHistory()`)}
+      ${cBtn("deleted",hf.tab,"🗑 "+(lang==="ja"?"削除済み":"Deleted"),`hf.tab='deleted';hf.picked=null;renderHistory()`)}
     </div>`:"";
 
   if(hf.tab==="log" && isAdminAllowed){
-    app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">${adminTabs}
-      <p class="hint">${lang==="ja"?"誰がいつ何を操作したかの記録です（最新300件）":"Who did what and when (latest 300)"}</p>
+    app.innerHTML=topbar()+header(t().histTitle)+`<div style="padding:10px 12px 100px">${adminTabs}
+      <p style="font-size:11px;color:#94a3b8;margin:0 0 8px">${lang==="ja"?"誰がいつ何を操作したかの記録（最新300件）":"Who did what and when (latest 300)"}</p>
       <div id="logBox">${t().loading}</div></div>`+tabbar();
     renderActivityLog(); return;
   }
   if(hf.tab==="deleted" && isAdminAllowed){
-    app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">${adminTabs}
-      <p class="hint">${lang==="ja"?"削除された積込記録です。復元できます。":"Deleted load records. Can be restored."}</p>
+    app.innerHTML=topbar()+header(t().histTitle)+`<div style="padding:10px 12px 100px">${adminTabs}
+      <p style="font-size:11px;color:#94a3b8;margin:0 0 8px">${lang==="ja"?"削除された積込記録です。復元できます。":"Deleted load records. Can be restored."}</p>
       <div id="delBox"></div></div>`+tabbar();
     renderDeletedList(); return;
   }
@@ -2360,16 +2361,16 @@ function renderHistory(){
   const list=hf.mode==="truck"?suggest("truck"):suggest("dest");
   let inner;
   if(!hf.picked){
-    inner=`<div class="hint" style="margin-bottom:6px">${t().choose}</div>`+list.map(v=>`<button class="card" style="display:block;font-weight:bold" onclick="hf.picked=${JSON.stringify(v).replace(/"/g,'&quot;')};renderHistory()">${esc(v)}</button>`).join("");
+    inner=`<p style="font-size:12px;color:#94a3b8;margin:0 0 6px">${t().choose}</p>`+list.map(v=>`<button style="width:100%;text-align:left;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:5px;font-size:14px;font-weight:600;cursor:pointer" onclick="hf.picked=${JSON.stringify(v).replace(/"/g,'&quot;')};renderHistory()">${esc(v)}</button>`).join("");
   } else {
     const res=records.filter(r=>(hf.mode==="truck"?r.truck:r.destination)===hf.picked);
-    inner=`<button class="chip" onclick="hf.picked=null;renderHistory()">‹ ${t().back}</button><div style="font-weight:bold;font-size:18px;margin:8px 0">${esc(hf.picked)}</div><div class="hint">${t().loadings(res.length)}</div><div id="hres">${t().loading}</div>`;
+    inner=`<button style="padding:6px 12px;font-size:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer" onclick="hf.picked=null;renderHistory()">‹ ${t().back}</button><div style="font-weight:700;font-size:16px;margin:8px 0">${esc(hf.picked)}</div><div style="font-size:12px;color:#94a3b8">${t().loadings(res.length)}</div><div id="hres">${t().loading}</div>`;
     listHtml(res).then(h=>{const e=document.getElementById("hres");if(e)e.innerHTML=h;});
   }
-  app.innerHTML=topbar()+header(t().histTitle)+`<div class="pad">${adminTabs}
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button class="btn small" style="flex:1;${hf.mode==="truck"?"":"background:#f1f5f9;color:#475569"}" onclick="hf.mode='truck';hf.picked=null;renderHistory()">🚚 ${t().byTruck}</button>
-      <button class="btn small" style="flex:1;${hf.mode==="dest"?"":"background:#f1f5f9;color:#475569"}" onclick="hf.mode='dest';hf.picked=null;renderHistory()">📦 ${t().byDest}</button>
+  app.innerHTML=topbar()+header(t().histTitle)+`<div style="padding:10px 12px 100px">${adminTabs}
+    <div style="display:flex;gap:5px;margin-bottom:8px">
+      ${cBtn("truck",hf.mode,"🚚 "+t().byTruck,`hf.mode='truck';hf.picked=null;renderHistory()`)}
+      ${cBtn("dest",hf.mode,"📦 "+t().byDest,`hf.mode='dest';hf.picked=null;renderHistory()`)}
     </div>${inner}</div>`+tabbar();
 }
 
@@ -2395,7 +2396,7 @@ async function renderUserMgmt(){
   const roleColors={admin:"#1e3a5f",worker:"#059669",view_only:"#7c3aed",dest_only:"#d97706"};
   const roleLabels={admin:"管理者",worker:"現場",view_only:"閲覧専用",dest_only:"納品先確認"};
   const roleOptions=Object.entries(roleLabels).map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
-  const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
+  const tabBtn=(m,label)=>`<button style="flex:1;padding:7px 6px;font-size:12px;font-weight:700;border:2px solid ${mf.mode===m?"var(--blue)":"#e2e8f0"};border-radius:8px;background:${mf.mode===m?"var(--blue)":"#f8fafc"};color:${mf.mode===m?"#fff":"#475569"};cursor:pointer;white-space:nowrap" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
   const userRows=userRolesList.map(u=>`
     <div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
       <div style="min-width:0;flex:1">
@@ -2519,60 +2520,58 @@ function renderMaster(){
   </div>`+tabbar();
 }
 function renderMasterVolume(){
-  const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
-  const rowHtml=(r,i)=>`<div class="card" style="display:block">
-      <div style="display:flex;align-items:center;gap:6px">
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <button class="chip" style="padding:8px 14px;font-size:18px;${i===0?"opacity:.35":""}" onclick="masterVolMove(${i},-1)">▲</button>
-          <button class="chip" style="padding:8px 14px;font-size:18px;${i===vol.length-1?"opacity:.35":""}" onclick="masterVolMove(${i},1)">▼</button>
+  const tabBtn=(m,label)=>`<button style="flex:1;padding:7px 6px;font-size:12px;font-weight:700;border:2px solid ${mf.mode===m?"var(--blue)":"#e2e8f0"};border-radius:8px;background:${mf.mode===m?"var(--blue)":"#f8fafc"};color:${mf.mode===m?"#fff":"#475569"};cursor:pointer;white-space:nowrap" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
+  const rowHtml=(r,i)=>`<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:5px">
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <button style="padding:3px 8px;font-size:13px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;cursor:pointer;${i===0?"opacity:.35":""}" onclick="masterVolMove(${i},-1)">▲</button>
+          <button style="padding:3px 8px;font-size:13px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;cursor:pointer;${i===vol.length-1?"opacity:.35":""}" onclick="masterVolMove(${i},1)">▼</button>
         </div>
-        <input id="mv_label_${r.id}" value="${esc(r.label)}" style="flex:1;font-weight:600">
-        <button class="chip" style="color:#dc2626" onclick="masterVolDel(${r.id})">🗑</button>
+        <input id="mv_label_${r.id}" value="${esc(r.label)}" style="flex:1;font-weight:600;padding:7px 10px;font-size:14px;border:1px solid #e2e8f0;border-radius:8px">
+        <button style="padding:5px 10px;font-size:13px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer" onclick="masterVolDel(${r.id})">🗑</button>
       </div>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"締切 時":"Deadline hour"}</label><input id="mv_h_${r.id}" inputmode="numeric" value="${r.deadline_hour!=null?r.deadline_hour:""}" placeholder="0-23"></div>
-        <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"締切 分":"Deadline min"}</label><input id="mv_m_${r.id}" inputmode="numeric" value="${r.deadline_minute!=null?r.deadline_minute:""}" placeholder="0-59"></div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <div style="flex:1"><label style="font-size:11px;color:#64748b;font-weight:600;display:block;margin-bottom:3px">${lang==="ja"?"締切 時":"DL hour"}</label><input id="mv_h_${r.id}" inputmode="numeric" value="${r.deadline_hour!=null?r.deadline_hour:""}" placeholder="0-23" style="padding:6px 8px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
+        <div style="flex:1"><label style="font-size:11px;color:#64748b;font-weight:600;display:block;margin-bottom:3px">${lang==="ja"?"締切 分":"DL min"}</label><input id="mv_m_${r.id}" inputmode="numeric" value="${r.deadline_minute!=null?r.deadline_minute:""}" placeholder="0-59" style="padding:6px 8px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
       </div>
-      <div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px">
-        <p class="hint" style="margin:0 0 6px">${lang==="ja"?"処理能力の自動計算に使う値（調査後に入力してください）":"Used for automatic capacity calculation (enter after investigation)"}</p>
-        <div style="display:flex;gap:8px">
-          <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"生産性（件/時間/人）":"Productivity (items/hr/person)"}</label><input id="mv_prod_${r.id}" inputmode="decimal" value="${r.productivity!=null?r.productivity:""}"></div>
-          <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"実働時間":"Work hours"}</label><input id="mv_wh_${r.id}" inputmode="decimal" value="${r.work_hours!=null?r.work_hours:""}"></div>
-        </div>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <div style="flex:1"><label style="font-size:12px;color:#b45309;font-weight:normal">${lang==="ja"?"注意（負荷率 %）":"Caution (load %)"}</label><input id="mv_wr_${r.id}" inputmode="numeric" value="${r.warn_ratio!=null?Math.round(r.warn_ratio*100):""}" placeholder="例 80"></div>
-          <div style="flex:1"><label style="font-size:12px;color:#b91c1c;font-weight:normal">${lang==="ja"?"警告（負荷率 %）":"Alert (load %)"}</label><input id="mv_ar_${r.id}" inputmode="numeric" value="${r.alert_ratio!=null?Math.round(r.alert_ratio*100):""}" placeholder="例 100"></div>
+      <div style="margin-top:6px;border-top:1px solid #f1f5f9;padding-top:6px">
+        <p style="font-size:10px;color:#94a3b8;margin:0 0 4px">${lang==="ja"?"処理能力の自動計算（調査後に入力）":"For auto capacity calc (enter after investigation)"}</p>
+        <div style="display:flex;gap:5px">
+          <div style="flex:1"><label style="font-size:10px;color:#64748b;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"生産性":"Prod."}</label><input id="mv_prod_${r.id}" inputmode="decimal" value="${r.productivity!=null?r.productivity:""}" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
+          <div style="flex:1"><label style="font-size:10px;color:#64748b;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"実働時間":"Work h"}</label><input id="mv_wh_${r.id}" inputmode="decimal" value="${r.work_hours!=null?r.work_hours:""}" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
+          <div style="flex:1"><label style="font-size:10px;color:#b45309;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"注意%":"Warn%"}</label><input id="mv_wr_${r.id}" inputmode="numeric" value="${r.warn_ratio!=null?Math.round(r.warn_ratio*100):""}" placeholder="80" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
+          <div style="flex:1"><label style="font-size:10px;color:#b91c1c;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"警告%":"Alert%"}</label><input id="mv_ar_${r.id}" inputmode="numeric" value="${r.alert_ratio!=null?Math.round(r.alert_ratio*100):""}" placeholder="100" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
         </div>
       </div>
-      <div style="margin-top:10px;border-top:1px solid #f1f5f9;padding-top:8px">
-        <p class="hint" style="margin:0 0 6px">${lang==="ja"?"件数だけで判定したい場合（生産性・実働時間が未設定の時に使われます）":"Used when productivity/work hours are not set (judged by count only)"}</p>
-        <div style="display:flex;gap:8px">
-          <div style="flex:1"><label style="font-size:12px;color:#64748b;font-weight:normal">${lang==="ja"?"平均":"Avg"}</label><input id="mv_avg_${r.id}" inputmode="numeric" value="${r.avg_value!=null?r.avg_value:""}"></div>
-          <div style="flex:1"><label style="font-size:12px;color:#b45309;font-weight:normal">${lang==="ja"?"注意":"Warn"}</label><input id="mv_warn_${r.id}" inputmode="numeric" value="${r.warn_value!=null?r.warn_value:""}"></div>
-          <div style="flex:1"><label style="font-size:12px;color:#b91c1c;font-weight:normal">${lang==="ja"?"警告":"Alert"}</label><input id="mv_alert_${r.id}" inputmode="numeric" value="${r.alert_value!=null?r.alert_value:""}"></div>
+      <div style="margin-top:5px;border-top:1px solid #f1f5f9;padding-top:5px">
+        <p style="font-size:10px;color:#94a3b8;margin:0 0 4px">${lang==="ja"?"件数のみ判定":"Count-only judgment"}</p>
+        <div style="display:flex;gap:5px">
+          <div style="flex:1"><label style="font-size:10px;color:#64748b;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"平均":"Avg"}</label><input id="mv_avg_${r.id}" inputmode="numeric" value="${r.avg_value!=null?r.avg_value:""}" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
+          <div style="flex:1"><label style="font-size:10px;color:#b45309;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"注意":"Warn"}</label><input id="mv_warn_${r.id}" inputmode="numeric" value="${r.warn_value!=null?r.warn_value:""}" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
+          <div style="flex:1"><label style="font-size:10px;color:#b91c1c;font-weight:600;display:block;margin-bottom:2px">${lang==="ja"?"警告":"Alert"}</label><input id="mv_alert_${r.id}" inputmode="numeric" value="${r.alert_value!=null?r.alert_value:""}" style="padding:5px 7px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;width:100%"></div>
         </div>
       </div>
-      <button class="btn small ghost" style="width:100%;margin-top:10px" onclick="masterVolSave(${r.id})">${lang==="ja"?"この場所を保存":"Save this row"}</button>
+      <button style="width:100%;padding:8px;font-size:12px;font-weight:700;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer;margin-top:7px" onclick="masterVolSave(${r.id})">${lang==="ja"?"この場所を保存":"Save this row"}</button>
     </div>`;
-  app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+  app.innerHTML=topbar()+header(t().masterTitle)+`<div style="padding:10px 12px 100px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("course_dc3",t().candTitle3)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー管理":"Users"))}
+    <div style="display:flex;gap:5px;margin-bottom:10px">
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー":"Users"))}
     </div>
-    <div style="display:flex;gap:8px">
-      <input id="mvNew" placeholder="${lang==="ja"?"場所の名前":"Location name"}" style="flex:1">
-      <button class="btn small" style="padding:0 16px" onclick="masterVolAdd()">＋ ${t().mAdd}</button>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input id="mvNew" placeholder="${lang==="ja"?"場所の名前":"Location name"}" style="flex:1;padding:8px 10px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px">
+      <button style="padding:8px 14px;font-size:13px;font-weight:700;border:none;border-radius:9px;background:var(--blue);color:#fff;cursor:pointer" onclick="masterVolAdd()">＋ ${t().mAdd}</button>
     </div>
-    <p class="hint" style="margin-top:8px">${lang==="ja"?"入力値が「注意」以上で黄色、「警告」以上で赤色になります。各項目を直したら「この場所を保存」を押してください。":"Values at or above Warn turn yellow; at or above Alert turn red. Press save after editing."}</p>
-    <div style="margin-top:10px">${vol.length?vol.map(rowHtml).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
+    <p style="font-size:11px;color:#94a3b8;margin:0 0 8px">${lang==="ja"?"入力値が「注意」以上で黄色、「警告」以上で赤色になります。":"Values at or above Warn=yellow, Alert=red."}</p>
+    <div>${vol.length?vol.map(rowHtml).join(""):`<p style="font-size:12px;color:#94a3b8;text-align:center">${t().mEmpty}</p>`}</div>
   </div>`+tabbar();
 }
 async function masterVolAdd(){
