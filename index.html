@@ -849,8 +849,8 @@ async function render(){
     body=header(t().homeTitle)+`<div class="pad">
       <div class="home-grid">
         <div class="home-left">
-          <button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>
-          ${renderDirectLoad()}
+          ${(!isViewOnly&&!isDestOnly)?`<button class="btn amber" onclick="go('register')">📷 ${t().capture}</button>`:""}
+          ${(!isViewOnly&&!isDestOnly)?renderDirectLoad():""}
           <div style="display:flex;gap:8px;margin-top:8px;align-items:stretch">
             <div class="panel" style="flex:1;margin:0;background:#eff6ff;border:none;color:#1e3a8a">
               <div style="font-size:12px;font-weight:bold;margin-bottom:4px">${t().today}</div>
@@ -865,10 +865,11 @@ async function render(){
                 }).join("");
               })()}
             </div>
-            <button class="btn ghost" style="flex:1;margin:0;line-height:1.4" onclick="go('list')">📋 ${lang==="ja"?"横持ち済み<br>一覧を見る":"View all<br>records"}</button>
+            <button class="btn ghost" style="flex:1;margin:0;line-height:1.6;font-size:17px" onclick="go('list')">📋 ${lang==="ja"?"横持ち<br>一覧を見る":"View all<br>records"}</button>
           </div>
-          <button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>
-          <button class="btn" style="margin-top:8px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>
+          ${(!isViewOnly&&!isDestOnly)?`<button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>`:""}
+          ${(!isViewOnly&&!isDestOnly)?`<button class="btn" style="margin-top:8px;background:#7c3aed" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>`:""}
+          ${(isViewOnly||isDestOnly)?`<button class="btn teal" style="margin-top:8px" onclick="go('pallet')">📦 ${lang==="ja"?"パレット":"Pallets"}　${lang==="ja"?"残り合計":"total"} ${palTotal} ${lang==="ja"?"PL":"PL"}</button>`:""}
           <button class="btn ghost small" style="margin:12px auto 0;width:auto" onclick="logout()">${t().logout}</button>
         </div>
         <div class="home-right">
