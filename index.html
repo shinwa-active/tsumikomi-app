@@ -1528,30 +1528,19 @@ async function renderDetail(id){
       const pl=c.pl||1;
       const cnt=getCnt(c);
       const allDone=cnt>=pl;
-      // PLが1の場合は1つだけ、複数の場合はPL数分のチェックボックスを表示
-      if(pl===1){
-        return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;display:flex;align-items:center;gap:10px;${!canCheck?"opacity:.5":""}">
-          <button onclick="tapCoursePl('${c.id}','${r.id}',0,${pl})" ${!canCheck?"disabled":""} style="background:none;border:none;padding:0;cursor:pointer;font-size:22px;color:${allDone?"#0d9488":"#cbd5e1"}">${allDone?"✓":"○"}</button>
+      // チェックアイコンをPL数分表示（表示のみ、タップは行全体で受ける）
+      const icons=Array.from({length:pl},(_,i)=>`<span style="font-size:22px;color:${i<cnt?"#0d9488":"#cbd5e1"}">${i<cnt?"✓":"○"}</span>`).join("");
+      return `<button id="courseRow_${c.id}" onclick="${canCheck?`tapCourseRow('${c.id}','${r.id}',${pl})`:""}" ${!canCheck?"disabled":""} style="width:100%;text-align:left;border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${!canCheck?"opacity:.5":""}">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:${pl>1?"6px":"0"}">
           <b style="font-size:17px">${esc(c.code)}</b>
           <span style="margin-left:auto;color:#64748b">${cnt}/${pl} PL</span>
-        </div>`;
-      } else {
-        const dots=Array.from({length:pl},(_,i)=>{
-          const checked=i<cnt;
-          return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})" ${!canCheck?"disabled":""} style="background:none;border:none;padding:0;cursor:pointer;font-size:22px;color:${checked?"#0d9488":"#cbd5e1"}">${checked?"✓":"○"}</button>`;
-        }).join("");
-        return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${!canCheck?"opacity:.5":""}">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-            <b style="font-size:17px">${esc(c.code)}</b>
-            <span style="margin-left:auto;color:#64748b">${cnt}/${pl} PL</span>
-          </div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">${dots}</div>
-        </div>`;
-      }
+        </div>
+        ${pl>1?`<div style="display:flex;gap:8px;flex-wrap:wrap">${icons}</div>`:`<div style="display:inline-block">${icons}</div>`}
+      </button>`;
     }).join("");
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
       ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
-      ${courseRows}</div>`; 
+      ${courseRows}</div>`;
   }
   let actions="";
   if(!r.completed){
@@ -1590,76 +1579,56 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
-// PLごとのチェック管理
-// checked_at に "1"/"2"/"3" などチェック済みPL数を記録
-// checked=true は全PLチェック済み時のみ
-async function tapCoursePl(cid, rid, tapIdx, pl){
+// 行全体タップで +1 チェック（全部チェック済みなら0に戻す）
+async function tapCourseRow(cid, rid, pl){
   if(isViewOnly) return viewOnlyBlock();
   const rec=records.find(x=>String(x.id)===String(rid));
   if(!rec||!rec.courses) return;
   const course=rec.courses.find(c=>String(c.id)===String(cid));
   if(!course) return;
-  // 現在のチェック数を取得
+  // 現在のチェック数
   let curCnt=0;
   if(course.checked){ const n=parseInt(course.checked_at); curCnt=(!isNaN(n)&&n>=1&&n<=pl)?n:pl; }
-  // tapIdxがcurCnt-1以下（チェック済みの最後をタップ）→ その1つ前に戻す
-  // tapIdxがcurCnt以上（未チェックをタップ）→ tapIdx+1にする
-  let newCnt;
-  if(tapIdx < curCnt){
-    // チェック済みをタップ → そこまで戻す（tapIdx個になる）
-    newCnt = tapIdx;
-  } else {
-    // 未チェックをタップ → tapIdx+1個にする
-    newCnt = tapIdx + 1;
-  }
+  else { const n=parseInt(course.checked_at); if(!isNaN(n)&&n>=1&&n<pl) curCnt=n; }
+  // +1、全部済みなら0に戻す
+  const newCnt = curCnt >= pl ? 0 : curCnt + 1;
   const newChecked = newCnt >= pl;
   const newCheckedAt = newCnt > 0 ? String(newCnt) : null;
-  // DBを更新
-  await sb.from("courses").update({
-    checked: newChecked,
-    checked_at: newCheckedAt
-  }).eq("id", cid);
-  // ローカルのrecordsを更新
-  course.checked = newChecked;
-  course.checked_at = newCheckedAt;
+  await sb.from("courses").update({checked:newChecked, checked_at:newCheckedAt}).eq("id",cid);
+  course.checked=newChecked; course.checked_at=newCheckedAt;
   // DOM更新
   const rowEl=document.getElementById("courseRow_"+cid);
   if(rowEl){
     rowEl.style.border=`2px solid ${newChecked?"#5eead4":"#e2e8f0"}`;
     rowEl.style.background=newChecked?"#f0fdfa":"#fff";
-    // ボタンのアイコンを更新
-    const btns=rowEl.querySelectorAll("button");
-    if(pl===1){
-      const btn=btns[0];
-      if(btn){ btn.style.color=newChecked?"#0d9488":"#cbd5e1"; btn.textContent=newChecked?"✓":"○"; }
-    } else {
-      btns.forEach((btn,i)=>{
-        const checked=i<newCnt;
-        btn.style.color=checked?"#0d9488":"#cbd5e1";
-        btn.textContent=checked?"✓":"○";
-      });
-    }
-    // PLカウント表示を更新
-    const countEl=rowEl.querySelector("span[style*='#64748b']");
-    if(countEl) countEl.textContent=`${newCnt}/${pl} PL`;
+    // PLカウント更新
+    const cntEl=rowEl.querySelector("span[style*='#64748b']");
+    if(cntEl) cntEl.textContent=`${newCnt}/${pl} PL`;
+    // アイコン更新
+    const iconSpans=rowEl.querySelectorAll("span[style*='color:#']");
+    iconSpans.forEach((s,i)=>{
+      const checked=i<newCnt;
+      s.style.color=checked?"#0d9488":"#cbd5e1";
+      s.textContent=checked?"✓":"○";
+    });
   }
-  // allCheckedを再確認して確認ボタンを更新
+  // allChecked再確認
   if(rec.courses){
-    const getCntLocal=c=>{ if(!c.checked){ const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1)?n:0; } const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; };
-    const allDone=rec.courses.every(c=>getCntLocal(c)>=(c.pl||1));
+    const getCntL=c=>{ if(c.checked){ const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; } const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1)?n:0; };
+    const allDone=rec.courses.every(c=>getCntL(c)>=(c.pl||1));
     const destBtn=document.querySelector(`button[onclick*="confirmDest('${rid}'"]`);
     if(destBtn) destBtn.setAttribute("onclick",`confirmDest('${rid}',${allDone})`);
     const msg=document.getElementById("checkAllMsg_"+rid);
     if(msg) msg.style.display=allDone?"none":"block";
   }
 }
-// 後方互換（古い記録のcheckd=trueのみのもの対応）
+// 後方互換
+async function tapCoursePl(cid,rid,tapIdx,pl){ await tapCourseRow(cid,rid,pl); }
 async function toggleCourse(cid,rid,cur){
   if(isViewOnly) return viewOnlyBlock();
   const rec=records.find(x=>String(x.id)===String(rid));
   const course=rec&&rec.courses?rec.courses.find(c=>String(c.id)===String(cid)):null;
-  const pl=course?course.pl||1:1;
-  await tapCoursePl(cid,rid,cur?0:pl-1,pl);
+  await tapCourseRow(cid,rid,course?course.pl||1:1);
 }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
@@ -2738,7 +2707,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,tapCourseRow,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
