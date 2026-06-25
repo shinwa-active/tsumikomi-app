@@ -1304,7 +1304,7 @@ function addCourseG(key){
     if(getMaster(otherKey).includes(c)){ toast(lang==="ja"?`「${c}」は${grpLabel[otherKey]}のコースです。そちらから選択してください。`:`"${c}" belongs to ${grpLabel[otherKey]}.`); return; }
   }
   const partials=isPartialDirectLoadCode(c);
-  if(partials.length){ const locs=partials.map(r=>r.location).join("、"); if(!confirm(lang==="ja"?`${c} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading at ${locs} today.\n\nAdd anyway?`)) return; }
+  if(partials.length){ if(!confirm(lang==="ja"?`${c} は ${partials.map(r=>r.location).join("、")} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading today.\n\nAdd anyway?`)) return; }
   if(mix && mix.key===key){ mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return; }
   const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses();
 }
@@ -1344,8 +1344,7 @@ function checkPriorityOki(){
   }
   const violated=[];
   for(const oki of regOki){
-    const okiPrefix=oki.trim();
-    for(const route of ROUTES.filter(r=>r.pri&&r.from===okiPrefix)){
+    for(const route of ROUTES.filter(r=>r.pri&&r.from===oki.trim())){
       if(hasAnyGrp){
         const match=(route.to==="DC1 4F"&&has4f)||(route.to==="DC1 1F"&&has1f)||(route.to==="DC3"&&hasDc3);
         if(!match) continue;
@@ -1353,7 +1352,7 @@ function checkPriorityOki(){
         const dm=allDests.length===0||allDests.some(d=>{
           if(route.to==="DC1 4F") return d.indexOf("DC1 4F")>=0||d.indexOf("DC14F")>=0;
           if(route.to==="DC1 1F") return d.indexOf("DC1")>=0&&d.indexOf("DC1 4F")<0&&d.indexOf("DC14F")<0;
-          if(route.to==="DC3")   return d.indexOf("DC3")>=0;
+          if(route.to==="DC3") return d.indexOf("DC3")>=0;
           return false;
         });
         if(!dm) continue;
@@ -1511,7 +1510,9 @@ async function renderDetail(id){
   const r=records.find(x=>String(x.id)===String(id));
   if(!r){ go(role==="worker"?"list":"search"); return; }
   const courses=(r.courses||[]).slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
-  const allChecked = courses.length===0 || courses.every(c=>c.checked);
+  // PLチェック数の取得（checked_atに数値文字列で保存）
+  const getCnt=c=>{ if(!c.checked) return 0; const n=parseInt(c.checked_at); return (!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; };
+  const allChecked = courses.length===0 || courses.every(c=>getCnt(c)>=(c.pl||1));
   let photosHtml=""; window._photoUrls=[];
   if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
@@ -1522,10 +1523,35 @@ async function renderDetail(id){
   const commentRow=`<div class="row"><div class="k">${t().iComment}</div><div id="detailComment" style="font-weight:500">${esc(commentVal)}</div></div>`;
   let courseBox="";
   if(courses.length){
+    const canCheck=r.completed&&!r.dest_confirmed&&!isViewOnly;
+    const courseRows=courses.map(c=>{
+      const pl=c.pl||1;
+      const cnt=getCnt(c);
+      const allDone=cnt>=pl;
+      // PLが1の場合は1つだけ、複数の場合はPL数分のチェックボックスを表示
+      if(pl===1){
+        return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;display:flex;align-items:center;gap:10px;${!canCheck?"opacity:.5":""}">
+          <button onclick="tapCoursePl('${c.id}','${r.id}',0,${pl})" ${!canCheck?"disabled":""} style="background:none;border:none;padding:0;cursor:pointer;font-size:22px;color:${allDone?"#0d9488":"#cbd5e1"}">${allDone?"✓":"○"}</button>
+          <b style="font-size:17px">${esc(c.code)}</b>
+          <span style="margin-left:auto;color:#64748b">${cnt}/${pl} PL</span>
+        </div>`;
+      } else {
+        const dots=Array.from({length:pl},(_,i)=>{
+          const checked=i<cnt;
+          return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})" ${!canCheck?"disabled":""} style="background:none;border:none;padding:0;cursor:pointer;font-size:22px;color:${checked?"#0d9488":"#cbd5e1"}">${checked?"✓":"○"}</button>`;
+        }).join("");
+        return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${!canCheck?"opacity:.5":""}">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <b style="font-size:17px">${esc(c.code)}</b>
+            <span style="margin-left:auto;color:#64748b">${cnt}/${pl} PL</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${dots}</div>
+        </div>`;
+      }
+    }).join("");
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
       ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
-      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed||isViewOnly)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed||isViewOnly)?"opacity:.5":""}">
-        <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
+      ${courseRows}</div>`; 
   }
   let actions="";
   if(!r.completed){
@@ -1564,30 +1590,76 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
+// PLごとのチェック管理
+// checked_at に "1"/"2"/"3" などチェック済みPL数を記録
+// checked=true は全PLチェック済み時のみ
+async function tapCoursePl(cid, rid, tapIdx, pl){
+  if(isViewOnly) return viewOnlyBlock();
+  const rec=records.find(x=>String(x.id)===String(rid));
+  if(!rec||!rec.courses) return;
+  const course=rec.courses.find(c=>String(c.id)===String(cid));
+  if(!course) return;
+  // 現在のチェック数を取得
+  let curCnt=0;
+  if(course.checked){ const n=parseInt(course.checked_at); curCnt=(!isNaN(n)&&n>=1&&n<=pl)?n:pl; }
+  // tapIdxがcurCnt-1以下（チェック済みの最後をタップ）→ その1つ前に戻す
+  // tapIdxがcurCnt以上（未チェックをタップ）→ tapIdx+1にする
+  let newCnt;
+  if(tapIdx < curCnt){
+    // チェック済みをタップ → そこまで戻す（tapIdx個になる）
+    newCnt = tapIdx;
+  } else {
+    // 未チェックをタップ → tapIdx+1個にする
+    newCnt = tapIdx + 1;
+  }
+  const newChecked = newCnt >= pl;
+  const newCheckedAt = newCnt > 0 ? String(newCnt) : null;
+  // DBを更新
+  await sb.from("courses").update({
+    checked: newChecked,
+    checked_at: newCheckedAt
+  }).eq("id", cid);
+  // ローカルのrecordsを更新
+  course.checked = newChecked;
+  course.checked_at = newCheckedAt;
+  // DOM更新
+  const rowEl=document.getElementById("courseRow_"+cid);
+  if(rowEl){
+    rowEl.style.border=`2px solid ${newChecked?"#5eead4":"#e2e8f0"}`;
+    rowEl.style.background=newChecked?"#f0fdfa":"#fff";
+    // ボタンのアイコンを更新
+    const btns=rowEl.querySelectorAll("button");
+    if(pl===1){
+      const btn=btns[0];
+      if(btn){ btn.style.color=newChecked?"#0d9488":"#cbd5e1"; btn.textContent=newChecked?"✓":"○"; }
+    } else {
+      btns.forEach((btn,i)=>{
+        const checked=i<newCnt;
+        btn.style.color=checked?"#0d9488":"#cbd5e1";
+        btn.textContent=checked?"✓":"○";
+      });
+    }
+    // PLカウント表示を更新
+    const countEl=rowEl.querySelector("span[style*='#64748b']");
+    if(countEl) countEl.textContent=`${newCnt}/${pl} PL`;
+  }
+  // allCheckedを再確認して確認ボタンを更新
+  if(rec.courses){
+    const getCntLocal=c=>{ if(!c.checked){ const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1)?n:0; } const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; };
+    const allDone=rec.courses.every(c=>getCntLocal(c)>=(c.pl||1));
+    const destBtn=document.querySelector(`button[onclick*="confirmDest('${rid}'"]`);
+    if(destBtn) destBtn.setAttribute("onclick",`confirmDest('${rid}',${allDone})`);
+    const msg=document.getElementById("checkAllMsg_"+rid);
+    if(msg) msg.style.display=allDone?"none":"block";
+  }
+}
+// 後方互換（古い記録のcheckd=trueのみのもの対応）
 async function toggleCourse(cid,rid,cur){
   if(isViewOnly) return viewOnlyBlock();
-  const newChecked=!cur;
-  await sb.from("courses").update({checked:newChecked,checked_at:newChecked?new Date().toISOString():null}).eq("id",cid);
   const rec=records.find(x=>String(x.id)===String(rid));
-  if(rec && rec.courses){
-    const course=rec.courses.find(c=>String(c.id)===String(cid));
-    if(course){ course.checked=newChecked; course.checked_at=newChecked?new Date().toISOString():null; }
-  }
-  const btn=document.querySelector(`button[onclick*="toggleCourse('${cid}'"]`);
-  if(btn){
-    btn.style.border=`2px solid ${newChecked?"#5eead4":"#e2e8f0"}`;
-    btn.style.background=newChecked?"#f0fdfa":"#fff";
-    const icon=btn.querySelector("span:first-child");
-    if(icon){ icon.style.color=newChecked?"#0d9488":"#cbd5e1"; icon.textContent=newChecked?"✓":"○"; }
-    btn.setAttribute("onclick",`toggleCourse('${cid}','${rid}',${newChecked})`);
-  }
-  if(rec && rec.courses){
-    const allChecked=rec.courses.length===0||rec.courses.every(c=>c.checked);
-    const destBtn=document.querySelector(`button[onclick*="confirmDest('${rid}'"]`);
-    if(destBtn) destBtn.setAttribute("onclick",`confirmDest('${rid}',${allChecked})`);
-    const checkAllMsg=document.getElementById("checkAllMsg_"+rid);
-    if(checkAllMsg) checkAllMsg.style.display=allChecked?"none":"block";
-  }
+  const course=rec&&rec.courses?rec.courses.find(c=>String(c.id)===String(cid)):null;
+  const pl=course?course.pl||1:1;
+  await tapCoursePl(cid,rid,cur?0:pl-1,pl);
 }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
@@ -2535,7 +2607,6 @@ async function masterSortByColor(){
   if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
   else toast(lang==="ja"?"色でまとめて並べ替えました":"Reordered by color");
 }
-// コードの種類を判定（数字先頭=0, アルファベット先頭=1, カタカナ先頭=2, その他=3）
 function courseCodeType(v){
   if(!v) return 3;
   const c=v.charAt(0);
@@ -2544,46 +2615,29 @@ function courseCodeType(v){
   if(c>="ア"&&c<="ン") return 2;
   return 3;
 }
-// コードの数値プレフィックスを抽出（例："3%" → 3、"4+" → 4、"AA" → null）
-function courseCodeNum(v){
-  const m=v.match(/^(\d+)/);
-  return m?parseInt(m[1]):null;
-}
+function courseCodeNum(v){ const m=v.match(/^(\d+)/); return m?parseInt(m[1]):null; }
 async function masterSortInGroup(){
   if(!confirm(lang==="ja"
     ?"色グループ内を「数字若い順 → アルファベット順 → カタカナ順」で並べ替えます。\n\nよろしいですか？"
     :"Sort within each color group by: numbers → alphabet → katakana.\n\nOK?")) return;
   const arr=(masterRows[mf.mode]||[]).slice();
-  // 色グループごとにまとめる（現在の色順は維持）
-  const COURSE_SORT_ORDER_LOCAL={course_dc1:["red","blue",""],course_dc1_4f:["red",""],course_dc1_1f:["blue",""],course_dc3:["yellow",""]};
-  const order=COURSE_SORT_ORDER_LOCAL[mf.mode]||[""];
   const allColors=MCOLORS.map(c=>c.key);
+  const CORDER={course_dc1:["red","blue",""],course_dc1_4f:["red",""],course_dc1_1f:["blue",""],course_dc3:["yellow",""]};
+  const order=(CORDER[mf.mode]||[""]);
   const fullOrder=order.concat(allColors.filter(k=>!order.includes(k)));
-  // グループ内ソート関数
-  const sortWithinGroup=(items)=>{
-    return items.slice().sort((a,b)=>{
-      const ta=courseCodeType(a.value), tb=courseCodeType(b.value);
-      if(ta!==tb) return ta-tb; // 数字→英字→カナ
-      if(ta===0){
-        // 数字先頭：数値部分で比較し、同じなら残りの文字列で比較
-        const na=courseCodeNum(a.value), nb=courseCodeNum(b.value);
-        if(na!==nb) return na-nb;
-        return a.value.localeCompare(b.value,"ja");
-      }
-      return a.value.localeCompare(b.value,"ja");
-    });
-  };
-  // 色グループ別に分けてソート
+  const sortFn=(items)=>items.slice().sort((a,b)=>{
+    const ta=courseCodeType(a.value), tb=courseCodeType(b.value);
+    if(ta!==tb) return ta-tb;
+    if(ta===0){ const na=courseCodeNum(a.value), nb=courseCodeNum(b.value); if(na!==nb) return na-nb; }
+    return a.value.localeCompare(b.value,"ja");
+  });
   const grouped={};
   arr.forEach(r=>{ const c=r.color||""; (grouped[c]=grouped[c]||[]).push(r); });
   const sortedArr=[];
-  fullOrder.forEach(colorKey=>{
-    if(grouped[colorKey]) sortedArr.push(...sortWithinGroup(grouped[colorKey]));
-  });
-  // その他の色
-  Object.keys(grouped).forEach(c=>{ if(!fullOrder.includes(c)) sortedArr.push(...sortWithinGroup(grouped[c])); });
+  fullOrder.forEach(k=>{ if(grouped[k]) sortedArr.push(...sortFn(grouped[k])); });
+  Object.keys(grouped).forEach(c=>{ if(!fullOrder.includes(c)) sortedArr.push(...sortFn(grouped[c])); });
   const changed=[];
-  sortedArr.forEach((r,newIdx)=>{ if(r.sort_order!==newIdx){ r.sort_order=newIdx; changed.push(r); } });
+  sortedArr.forEach((r,i)=>{ if(r.sort_order!==i){ r.sort_order=i; changed.push(r); } });
   masterRows[mf.mode]=sortedArr;
   renderMaster();
   const results=await Promise.all(changed.map(r=>sb.from("master_items").update({sort_order:r.sort_order}).eq("id",r.id)));
@@ -2633,6 +2687,7 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
+/* ---------- 設定 ---------- */
 /* ---------- ENボタン：コメント翻訳 ---------- */
 let _commentOriginal=null;
 async function topbarTranslate(){
@@ -2683,7 +2738,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
