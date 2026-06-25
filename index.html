@@ -1556,27 +1556,59 @@ async function renderDetail(id){
   const r=records.find(x=>String(x.id)===String(id));
   if(!r){ go(role==="worker"?"list":"search"); return; }
   const courses=(r.courses||[]).slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
-  const allChecked = courses.length===0 || courses.every(c=>c.checked);
+  const allChecked = courses.length===0 || courses.every(c=>getCnt(c)>=(c.pl||1));
   let photosHtml=""; window._photoUrls=[];
   if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
   if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
   const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,maskName(r.worker_name)],
     [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
+  const canCheck=r.completed&&!r.dest_confirmed&&!isViewOnly;
   let courseBox="";
   if(courses.length){
-    courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
-      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
-      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed||isViewOnly)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed||isViewOnly)?"opacity:.5":""}">
-        <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
+    const courseRows=courses.map(c=>{
+      const pl=c.pl||1;
+      const cnt=getCnt(c);
+      const allDone=cnt>=pl;
+      if(!canCheck){
+        // 積込完了前はチェックボタンなし（コード名とPL数のみ表示）
+        return `<div id="courseRow_${c.id}" style="border:2px solid var(--line);background:#fff;border-radius:14px;padding:14px 16px;margin-top:8px;display:flex;align-items:center;gap:10px;">
+          <b style="font-size:19px">${esc(c.code)}</b>
+          <span style="margin-left:auto;color:var(--muted);font-size:16px;font-weight:600;">${pl} PL</span>
+        </div>`;
+      }
+      // 積込完了後：PL数分の大きなボタンを横並び
+      const plBtns=Array.from({length:pl},(_,i)=>{
+        const checked=i<cnt;
+        return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})"
+          style="flex:1;min-height:72px;border:2px solid ${checked?"#0d9488":"#cbd5e1"};background:${checked?"#0d9488":"#f8fafc"};border-radius:14px;color:${checked?"#fff":"#94a3b8"};font-size:30px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+          ${checked?"✓":"○"}
+        </button>`;
+      }).join("");
+      return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#0d9488":"var(--line)"};background:${allDone?"var(--teal-soft)":"#fff"};border-radius:14px;padding:14px;margin-top:8px;transition:border-color .15s,background .15s;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <b style="font-size:19px">${esc(c.code)}</b>
+          <span id="cntLabel_${c.id}" style="margin-left:auto;color:var(--muted);font-size:15px;font-weight:600;">${cnt}/${pl} PL</span>
+        </div>
+        <div style="display:flex;gap:8px;">${plBtns}</div>
+      </div>`;
+    }).join("");
+    courseBox=`<div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <b style="font-size:18px">${t().courseList}</b>
+        <span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span>
+      </div>
+      ${canCheck?`<p class="hint" style="margin-bottom:8px">${t().tapCheck}</p>`:""}
+      ${courseRows}
+    </div>`;
   }
   let actions="";
   if(!r.completed){
     actions+=`<button class="btn green" style="${(isViewOnly||isDestOnly)?"opacity:.5":""}" onclick="markComplete('${r.id}')">✔ ${t().complete}</button>`;
     actions+=`<button class="btn ghost" style="${(isViewOnly||isDestOnly)?"opacity:.5":""}" onclick="go('addmore',{id:'${r.id}'})">➕ ${lang==="ja"?"追加で登録":"Add more"}</button>`;
   }
-  if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
-    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
+  if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:var(--teal-soft);border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
+    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p id="checkAllMsg_${r.id}" class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
   let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
@@ -1607,7 +1639,56 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
-async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
+// PLチェック数取得（checked_atに数値文字列で記録、checked=trueは全PL済み）
+function getCnt(c){ if(!c) return 0; if(c.checked){ const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=(c.pl||1))?n:(c.pl||1); } const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=(c.pl||1))?n:0; }
+
+// PLごとの個別ボタン：押したインデックスをトグル（リスト順は変えない）
+async function tapCoursePl(cid,rid,tapIdx,pl){
+  if(isViewOnly) return viewOnlyBlock();
+  const rec=records.find(x=>String(x.id)===String(rid));
+  if(!rec||!rec.courses) return;
+  const course=rec.courses.find(c=>String(c.id)===String(cid));
+  if(!course) return;
+  const curCnt=getCnt(course);
+  const newCnt = tapIdx < curCnt ? tapIdx : tapIdx + 1;
+  const newChecked = newCnt >= pl;
+  const newCheckedAt = newCnt > 0 ? String(newCnt) : null;
+  await sb.from("courses").update({checked:newChecked, checked_at:newCheckedAt}).eq("id",cid);
+  course.checked=newChecked; course.checked_at=newCheckedAt;
+  // DOM更新（リスト順は変えない）
+  const rowEl=document.getElementById("courseRow_"+cid);
+  if(rowEl){
+    rowEl.style.border=`2px solid ${newChecked?"#0d9488":"var(--line)"}`;
+    rowEl.style.background=newChecked?"var(--teal-soft)":"#fff";
+    const cntEl=document.getElementById("cntLabel_"+cid);
+    if(cntEl) cntEl.textContent=`${newCnt}/${pl} PL`;
+    const btns=rowEl.querySelectorAll("button");
+    btns.forEach((btn,i)=>{
+      const checked=i<newCnt;
+      btn.style.border=`2px solid ${checked?"#0d9488":"#cbd5e1"}`;
+      btn.style.background=checked?"#0d9488":"#f8fafc";
+      btn.style.color=checked?"#fff":"#94a3b8";
+      btn.textContent=checked?"✓":"○";
+    });
+  }
+  // allChecked再確認
+  if(rec.courses){
+    const allDone=rec.courses.every(c=>getCnt(c)>=(c.pl||1));
+    const destBtn=document.querySelector(`button[onclick*="confirmDest('${rid}'"]`);
+    if(destBtn) destBtn.setAttribute("onclick",`confirmDest('${rid}',${allDone})`);
+    const msg=document.getElementById("checkAllMsg_"+rid);
+    if(msg) msg.style.display=allDone?"none":"block";
+  }
+}
+async function toggleCourse(cid,rid,cur){
+  // 後方互換：古いrecordは checked=true/false のみ
+  if(isViewOnly) return viewOnlyBlock();
+  const rec=records.find(x=>String(x.id)===String(rid));
+  const course=rec&&rec.courses?rec.courses.find(c=>String(c.id)===String(cid)):null;
+  const pl=course?course.pl||1:1;
+  const curCnt=course?getCnt(course):0;
+  await tapCoursePl(cid,rid,curCnt>=pl?0:curCnt,pl);
+}
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
 async function restoreRecord(id){ if(!isAdminAllowed) return; if(!confirm(lang==="ja"?"この記録を復元しますか？":"Restore this record?"))return; await sb.from("load_records").update({deleted_at:null,deleted_by:null}).eq("id",id); await logActivity("restore","load_records",id,"記録を復元",null,null); await loadRecords(); renderHistory(); toast(lang==="ja"?"復元しました":"Restored"); }
@@ -2608,7 +2689,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
