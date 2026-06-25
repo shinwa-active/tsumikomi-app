@@ -288,6 +288,7 @@ async function loadYoko(){
   const {data,error}=await sb.from("yokomochi_status").select("*").order("sort_order",{ascending:true});
   if(error){ console.error(error); return; }
   yoku=data||[];
+  if(view.name==="register"||view.name==="addmore") return;
   if(view.name==="home") render();
 }
 async function toggleYoko(id){
@@ -706,14 +707,14 @@ function go(name,params){
     }
     pendingCompleteId=null;
   }
-  view=Object.assign({name},params||{}); render(); window.scrollTo(0,0);
+  view=Object.assign({name},params||{}); _commentOriginal=null; render(); window.scrollTo(0,0);
 }
 function topbar(){
   return `<div class="topbar">
     <span style="opacity:.7">${lang==="ja"?"あなたは":"You are"}</span>
     <button class="pill ${role==="worker"?"on":""}" onclick="enterWorker()">${t().worker}</button>
     <button class="pill ${role==="admin"?"on":""}" style="${isAdminAllowed?"":"opacity:.35"}" onclick="${isAdminAllowed?"enterAdmin()":""}">${t().manager}</button>
-    <button class="pill" style="margin-left:auto" onclick="go('settings')">⚙ ${lang==="ja"?"日本語":"EN"}</button>
+    <button class="pill" id="topbarTransBtn" style="margin-left:auto" onclick="topbarTranslate()">⚙ ${lang==="ja"?"日本語":"EN"}</button>
   </div>`;
 }
 function header(title,back){
@@ -866,7 +867,9 @@ async function render(){
   else if(view.name==="volume"){ renderVolume(); return; }
   else if(view.name==="list"){
     app.innerHTML=topbar()+header(t().listTitle,role==="worker"?"go('home')":null)+`<div class="pad"><div id="lst" class="list-grid">${t().loading}</div></div>`+tabbar();
-    document.getElementById("lst").innerHTML=await listHtml(records);
+    const todayRecords=records.filter(r=>isToday(r.created_at));
+    const html=await listHtml(todayRecords);
+    document.getElementById("lst").innerHTML=html||`<p style="color:#94a3b8;text-align:center;padding:24px">${lang==="ja"?"本日の登録はありません":"No records today"}</p>`;
   }
   else if(view.name==="detail"){ renderDetail(view.id); return; }
   else if(view.name==="addmore"){ renderAddMore(view.id); return; }
@@ -1026,11 +1029,16 @@ function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
 
   // 積み地・納品先・トラックが揃うまでコースエリアをロック
+  // 追加画面ではトラック入力欄がないため既存レコードから参照する
   const truckEl=document.getElementById("truck");
-  const truckVal=truckEl?truckEl.value.trim():"";
+  let truckVal=truckEl?truckEl.value.trim():"";
+  if(!truckVal && view.name==="addmore"){
+    const addRec=records.find(x=>String(x.id)===String(view.id));
+    if(addRec && addRec.truck) truckVal=addRec.truck;
+  }
   const missing=[];
   if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading location");
-  if(!regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
+  if(view.name!=="addmore" && !regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
   if(!truckVal) missing.push(lang==="ja"?"トラック":"Truck");
   if(missing.length){
     area.innerHTML=`<div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;color:#64748b">
@@ -1122,17 +1130,21 @@ function pickDest(i){
   const arr=getMaster("dest"); const v=arr[i]; if(v==null) return;
   const idx=regDests.indexOf(v);
   if(idx>=0){
-    // 選択解除は常に許可
     regDests.splice(idx,1);
   } else {
-    // DC3を選ぼうとしたとき、既に他の納品先がある場合はブロック
-    if(v.indexOf("DC3")>=0 && regDests.length>0){
-      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません。先に他の納品先を外してください。":"DC3 cannot be combined with other destinations.");
+    let baseDests=regDests;
+    if(view.name==="addmore"){
+      const addRec=records.find(x=>String(x.id)===String(view.id));
+      const existingDests=(addRec&&addRec.destination)?String(addRec.destination).split("、").filter(Boolean):[];
+      baseDests=[...existingDests,...regDests];
+    }
+    if(v.indexOf("DC3")>=0 && baseDests.length>0){
+      const existing=baseDests.join("、");
+      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません"+(existing?"（既存："+existing+"）":"")+"。":"DC3 cannot be combined with other destinations.");
       return;
     }
-    // DC3以外を選ぼうとしたとき、既にDC3が選ばれている場合はブロック
-    if(v.indexOf("DC3")<0 && regDests.some(d=>d.indexOf("DC3")>=0)){
-      toast(lang==="ja"?"DC3が選択中のため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
+    if(v.indexOf("DC3")<0 && baseDests.some(d=>d.indexOf("DC3")>=0)){
+      toast(lang==="ja"?"DC3が含まれているため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
       return;
     }
     regDests.push(v);
@@ -1294,11 +1306,20 @@ function closeQr(){
 function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; } const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function addCourseG(key){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
-  // 納品先によるコースグループ制限チェック
   if(courseGrpBlocked(key)){ toast(courseGrpBlockMsg(key)); return; }
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
+  const grpLabel={course_dc3:"DC3行き",course_dc1_4f:"DC1 4F行き",course_dc1_1f:"DC1 1F行き"};
+  for(const otherKey of ["course_dc3","course_dc1_4f","course_dc1_1f"]){
+    if(otherKey===key) continue;
+    if(getMaster(otherKey).includes(c)){
+      toast(lang==="ja"
+        ?`「${c}」は${grpLabel[otherKey]}のコースです。そちらから選択してください。`
+        :`"${c}" belongs to ${grpLabel[otherKey]}. Please select it from that section.`);
+      return;
+    }
+  }
   const partials=isPartialDirectLoadCode(c);
   if(partials.length){
     const locs=partials.map(r=>r.location).join("、");
@@ -1330,8 +1351,8 @@ function drawCourses(){
   if(view.name==="addmore"){ if(typeof updateAnomAddMore==="function") updateAnomAddMore(); }
   else if(typeof updateAnom==="function") updateAnom();
 }
-/* ---- 積み地×納品先ごとの第一優先チェック ---- */
-// 戻り値: 違反している「積み地→納品先」の説明文の配列（空なら問題なし）
+/* ---- 積み地×実際に選んだコースグループの第一優先チェック ---- */
+// 戻り値: 違反している「積み地→行き先」の説明文の配列（空なら問題なし）
 function checkPriorityOki(){
   if(!regOki.length || !regCourses.length) return [];
   // 選択中コースに赤・黄・青が1つでもあれば問題なし
@@ -1340,6 +1361,15 @@ function checkPriorityOki(){
     return color==="red"||color==="yellow"||color==="blue";
   });
   if(hasPriColor) return [];
+
+  // 選択中コースが属するグループを特定
+  const hasGrp=(grp)=>regCourses.some(c=>c.grp===grp);
+  const has4f  = hasGrp("course_dc1_4f");
+  const has1f  = hasGrp("course_dc1_1f");
+  const hasDc3 = hasGrp("course_dc3");
+
+  // コースが未選択（grpなし）の場合は納品先ベースでフォールバック
+  const hasAnyGrp = has4f || has1f || hasDc3;
 
   // 追加画面では既存の納品先も含める
   let allDests=[...regDests];
@@ -1351,29 +1381,35 @@ function checkPriorityOki(){
     }
   }
 
-  // 積み地と納品先の組み合わせでROUTESの第一優先を確認
   const violated=[];
   for(const oki of regOki){
     const okiPrefix=oki.trim();
-    // 選択中の納品先（または追加画面の既存納品先）に対応するROUTESの第一優先を探す
-    const relevantRoutes=ROUTES.filter(r=>r.pri && r.from===okiPrefix);
-    for(const route of relevantRoutes){
-      // この行き先が選択中の納品先に該当するか確認
-      const destMatches=allDests.length===0 || allDests.some(d=>{
-        if(route.to==="DC1 4F") return d.indexOf("DC1 4F")>=0||d.indexOf("DC14F")>=0;
-        if(route.to==="DC1 1F") return d.indexOf("DC1")>=0 && d.indexOf("DC1 4F")<0 && d.indexOf("DC14F")<0;
-        if(route.to==="DC3")   return d.indexOf("DC3")>=0;
-        return false;
-      });
-      if(!destMatches) continue;
-      // 進捗ボードでこのルートに対応する第一優先が未完了かチェック
+    const priRoutes=ROUTES.filter(r=>r.pri && r.from===okiPrefix);
+    for(const route of priRoutes){
+      // コースグループが確定している場合はそのグループに関係するルートだけチェック
+      if(hasAnyGrp){
+        const routeMatchesGrp=
+          (route.to==="DC1 4F" && has4f) ||
+          (route.to==="DC1 1F" && has1f) ||
+          (route.to==="DC3"   && hasDc3);
+        if(!routeMatchesGrp) continue;
+      } else {
+        // コースなし：納品先ベースでチェック
+        const destMatches=allDests.length===0 || allDests.some(d=>{
+          if(route.to==="DC1 4F") return d.indexOf("DC1 4F")>=0||d.indexOf("DC14F")>=0;
+          if(route.to==="DC1 1F") return d.indexOf("DC1")>=0 && d.indexOf("DC1 4F")<0 && d.indexOf("DC14F")<0;
+          if(route.to==="DC3")   return d.indexOf("DC3")>=0;
+          return false;
+        });
+        if(!destMatches) continue;
+      }
+      // 進捗ボードでこのルートが未完了かチェック
       const yokuMatch=yoku.find(y=>y.label===route.label && y.priority);
       if(yokuMatch && !ydone(yokuMatch)){
         violated.push(route.label);
       }
     }
   }
-  // 重複除去
   return [...new Set(violated)];
 }
 function priorityOkiMsg(violated){
@@ -1529,7 +1565,9 @@ async function renderDetail(id){
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
   if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
   const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,maskName(r.worker_name)],
-    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
+    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)]];
+  const commentVal=r.comment||t().none;
+  const commentRow=`<div class="row"><div class="k">${t().iComment}</div><div id="detailComment" style="font-weight:500">${esc(commentVal)}</div></div>`;
   let courseBox="";
   if(courses.length){
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
@@ -1548,7 +1586,7 @@ async function renderDetail(id){
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">${photosHtml}</div>
-    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}</div>
+    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}${commentRow}</div>
     ${courseBox}${actions}${adminRow}
   </div>`;
 }
@@ -2562,6 +2600,43 @@ async function masterUpload(){
 }
 
 /* ---------- 設定 ---------- */
+/* ---------- ENボタン：コメント翻訳 ---------- */
+let _commentOriginal=null;
+async function topbarTranslate(){
+  const btn=document.getElementById("topbarTransBtn");
+  const detailEl=document.getElementById("detailComment");
+  const inputEl=document.getElementById("comment");
+  const targetEl=detailEl||inputEl;
+  if(!targetEl){ go("settings"); return; }
+  const isInput=!!inputEl&&!detailEl;
+  const getText=()=>isInput?targetEl.value.trim():targetEl.textContent.trim();
+  const setText=(v)=>{ if(isInput) targetEl.value=v; else targetEl.textContent=v; };
+  const noneTexts=[t().none,"（なし）","(none)"];
+  if(_commentOriginal!==null){
+    setText(_commentOriginal); _commentOriginal=null;
+    if(btn){ btn.textContent="⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; btn.disabled=false; }
+    return;
+  }
+  const text=getText();
+  if(!text||noneTexts.includes(text)){ toast(lang==="ja"?"コメントがありません":"No comment to translate"); return; }
+  if(btn){ btn.disabled=true; btn.textContent=lang==="ja"?"翻訳中…":"…"; }
+  try{
+    const sl=lang==="ja"?"ja":"en", tl=lang==="ja"?"en":"ja";
+    const url=`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+    const resp=await fetch(url);
+    const data=await resp.json();
+    const translated=data[0].map(seg=>seg[0]).join("");
+    if(translated){
+      _commentOriginal=text; setText(translated.trim());
+      if(btn){ btn.disabled=false; btn.textContent="↩ 元に戻す"; btn.style.background="#1d4ed8"; }
+    } else { throw new Error(); }
+  } catch(e){
+    toast(lang==="ja"?"翻訳に失敗しました":"Translation failed");
+    if(btn){ btn.disabled=false; btn.textContent="⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; }
+  }
+}
+
+/* ---------- 設定 ---------- */
 function renderSettings(){
   app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
     <div class="panel"><b>🌐 ${t().language}</b>
@@ -2575,7 +2650,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
