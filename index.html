@@ -275,7 +275,6 @@ async function loadRecords(){
   const all = data||[];
   records = all.filter(r=>!r.deleted_at);
   deletedRecords = all.filter(r=>r.deleted_at);
-  // 登録・追加画面で入力中の場合はrender()しない（入力内容が消えるのを防ぐ）
   if(view.name==="register"||view.name==="addmore") return;
   render();
 }
@@ -1028,8 +1027,6 @@ let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
 
-  // 積み地・納品先・トラックが揃うまでコースエリアをロック
-  // 追加画面ではトラック入力欄がないため既存レコードから参照する
   const truckEl=document.getElementById("truck");
   let truckVal=truckEl?truckEl.value.trim():"";
   if(!truckVal && view.name==="addmore"){
@@ -1129,24 +1126,15 @@ function pickDest(i){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const arr=getMaster("dest"); const v=arr[i]; if(v==null) return;
   const idx=regDests.indexOf(v);
-  if(idx>=0){
-    regDests.splice(idx,1);
-  } else {
+  if(idx>=0){ regDests.splice(idx,1); } else {
     let baseDests=regDests;
     if(view.name==="addmore"){
       const addRec=records.find(x=>String(x.id)===String(view.id));
-      const existingDests=(addRec&&addRec.destination)?String(addRec.destination).split("、").filter(Boolean):[];
-      baseDests=[...existingDests,...regDests];
+      const ed=(addRec&&addRec.destination)?String(addRec.destination).split("、").filter(Boolean):[];
+      baseDests=[...ed,...regDests];
     }
-    if(v.indexOf("DC3")>=0 && baseDests.length>0){
-      const existing=baseDests.join("、");
-      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません"+(existing?"（既存："+existing+"）":"")+"。":"DC3 cannot be combined with other destinations.");
-      return;
-    }
-    if(v.indexOf("DC3")<0 && baseDests.some(d=>d.indexOf("DC3")>=0)){
-      toast(lang==="ja"?"DC3が含まれているため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
-      return;
-    }
+    if(v.indexOf("DC3")>=0 && baseDests.length>0){ toast(lang==="ja"?"DC3は他の納品先と積み合わせできません（既存："+baseDests.join("、")+"）。":"DC3 cannot be combined with other destinations."); return; }
+    if(v.indexOf("DC3")<0 && baseDests.some(d=>d.indexOf("DC3")>=0)){ toast(lang==="ja"?"DC3が含まれているため他の納品先は追加できません。":"Cannot add other destinations while DC3 is selected."); return; }
     regDests.push(v);
   }
   drawDest(); drawCandidates(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
@@ -1313,22 +1301,11 @@ function addCourseG(key){
   const grpLabel={course_dc3:"DC3行き",course_dc1_4f:"DC1 4F行き",course_dc1_1f:"DC1 1F行き"};
   for(const otherKey of ["course_dc3","course_dc1_4f","course_dc1_1f"]){
     if(otherKey===key) continue;
-    if(getMaster(otherKey).includes(c)){
-      toast(lang==="ja"
-        ?`「${c}」は${grpLabel[otherKey]}のコースです。そちらから選択してください。`
-        :`"${c}" belongs to ${grpLabel[otherKey]}. Please select it from that section.`);
-      return;
-    }
+    if(getMaster(otherKey).includes(c)){ toast(lang==="ja"?`「${c}」は${grpLabel[otherKey]}のコースです。そちらから選択してください。`:`"${c}" belongs to ${grpLabel[otherKey]}.`); return; }
   }
   const partials=isPartialDirectLoadCode(c);
-  if(partials.length){
-    const locs=partials.map(r=>r.location).join("、");
-    const msg=lang==="ja"?`${c} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading at ${locs} today.\n\nAdd anyway?`;
-    if(!confirm(msg)) return;
-  }
-  if(mix && mix.key===key){
-    mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return;
-  }
+  if(partials.length){ const locs=partials.map(r=>r.location).join("、"); if(!confirm(lang==="ja"?`${c} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading at ${locs} today.\n\nAdd anyway?`)) return; }
+  if(mix && mix.key===key){ mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return; }
   const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses();
 }
 function courseRow(c,i){
@@ -1352,62 +1329,37 @@ function drawCourses(){
   else if(typeof updateAnom==="function") updateAnom();
 }
 /* ---- 積み地×実際に選んだコースグループの第一優先チェック ---- */
-// 戻り値: 違反している「積み地→行き先」の説明文の配列（空なら問題なし）
 function checkPriorityOki(){
   if(!regOki.length || !regCourses.length) return [];
-  // 選択中コースに赤・黄・青が1つでもあれば問題なし
-  const hasPriColor = regCourses.some(c=>{
-    const color = colorOf(c.grp, c.code);
-    return color==="red"||color==="yellow"||color==="blue";
-  });
+  const hasPriColor = regCourses.some(c=>{ const color=colorOf(c.grp,c.code); return color==="red"||color==="yellow"||color==="blue"; });
   if(hasPriColor) return [];
-
-  // 選択中コースが属するグループを特定
-  const hasGrp=(grp)=>regCourses.some(c=>c.grp===grp);
-  const has4f  = hasGrp("course_dc1_4f");
-  const has1f  = hasGrp("course_dc1_1f");
-  const hasDc3 = hasGrp("course_dc3");
-
-  // コースが未選択（grpなし）の場合は納品先ベースでフォールバック
-  const hasAnyGrp = has4f || has1f || hasDc3;
-
-  // 追加画面では既存の納品先も含める
+  const has4f=regCourses.some(c=>c.grp==="course_dc1_4f");
+  const has1f=regCourses.some(c=>c.grp==="course_dc1_1f");
+  const hasDc3=regCourses.some(c=>c.grp==="course_dc3");
+  const hasAnyGrp=has4f||has1f||hasDc3;
   let allDests=[...regDests];
   if(view.name==="addmore"){
     const addRec=records.find(x=>String(x.id)===String(view.id));
-    if(addRec&&addRec.destination){
-      const existing=String(addRec.destination).split("、").filter(Boolean);
-      allDests=[...new Set([...existing,...regDests])];
-    }
+    if(addRec&&addRec.destination) allDests=[...new Set([...String(addRec.destination).split("、").filter(Boolean),...regDests])];
   }
-
   const violated=[];
   for(const oki of regOki){
     const okiPrefix=oki.trim();
-    const priRoutes=ROUTES.filter(r=>r.pri && r.from===okiPrefix);
-    for(const route of priRoutes){
-      // コースグループが確定している場合はそのグループに関係するルートだけチェック
+    for(const route of ROUTES.filter(r=>r.pri&&r.from===okiPrefix)){
       if(hasAnyGrp){
-        const routeMatchesGrp=
-          (route.to==="DC1 4F" && has4f) ||
-          (route.to==="DC1 1F" && has1f) ||
-          (route.to==="DC3"   && hasDc3);
-        if(!routeMatchesGrp) continue;
+        const match=(route.to==="DC1 4F"&&has4f)||(route.to==="DC1 1F"&&has1f)||(route.to==="DC3"&&hasDc3);
+        if(!match) continue;
       } else {
-        // コースなし：納品先ベースでチェック
-        const destMatches=allDests.length===0 || allDests.some(d=>{
+        const dm=allDests.length===0||allDests.some(d=>{
           if(route.to==="DC1 4F") return d.indexOf("DC1 4F")>=0||d.indexOf("DC14F")>=0;
-          if(route.to==="DC1 1F") return d.indexOf("DC1")>=0 && d.indexOf("DC1 4F")<0 && d.indexOf("DC14F")<0;
+          if(route.to==="DC1 1F") return d.indexOf("DC1")>=0&&d.indexOf("DC1 4F")<0&&d.indexOf("DC14F")<0;
           if(route.to==="DC3")   return d.indexOf("DC3")>=0;
           return false;
         });
-        if(!destMatches) continue;
+        if(!dm) continue;
       }
-      // 進捗ボードでこのルートが未完了かチェック
-      const yokuMatch=yoku.find(y=>y.label===route.label && y.priority);
-      if(yokuMatch && !ydone(yokuMatch)){
-        violated.push(route.label);
-      }
+      const ym=yoku.find(y=>y.label===route.label&&y.priority);
+      if(ym&&!ydone(ym)) violated.push(route.label);
     }
   }
   return [...new Set(violated)];
@@ -1581,7 +1533,7 @@ async function renderDetail(id){
     actions+=`<button class="btn ghost" style="${(isViewOnly||isDestOnly)?"opacity:.5":""}" onclick="go('addmore',{id:'${r.id}'})">➕ ${lang==="ja"?"追加で登録":"Add more"}</button>`;
   }
   if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
-    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
+    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p id="checkAllMsg_${r.id}" class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
   let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
@@ -1612,7 +1564,31 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
-async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
+async function toggleCourse(cid,rid,cur){
+  if(isViewOnly) return viewOnlyBlock();
+  const newChecked=!cur;
+  await sb.from("courses").update({checked:newChecked,checked_at:newChecked?new Date().toISOString():null}).eq("id",cid);
+  const rec=records.find(x=>String(x.id)===String(rid));
+  if(rec && rec.courses){
+    const course=rec.courses.find(c=>String(c.id)===String(cid));
+    if(course){ course.checked=newChecked; course.checked_at=newChecked?new Date().toISOString():null; }
+  }
+  const btn=document.querySelector(`button[onclick*="toggleCourse('${cid}'"]`);
+  if(btn){
+    btn.style.border=`2px solid ${newChecked?"#5eead4":"#e2e8f0"}`;
+    btn.style.background=newChecked?"#f0fdfa":"#fff";
+    const icon=btn.querySelector("span:first-child");
+    if(icon){ icon.style.color=newChecked?"#0d9488":"#cbd5e1"; icon.textContent=newChecked?"✓":"○"; }
+    btn.setAttribute("onclick",`toggleCourse('${cid}','${rid}',${newChecked})`);
+  }
+  if(rec && rec.courses){
+    const allChecked=rec.courses.length===0||rec.courses.every(c=>c.checked);
+    const destBtn=document.querySelector(`button[onclick*="confirmDest('${rid}'"]`);
+    if(destBtn) destBtn.setAttribute("onclick",`confirmDest('${rid}',${allChecked})`);
+    const checkAllMsg=document.getElementById("checkAllMsg_"+rid);
+    if(checkAllMsg) checkAllMsg.style.display=allChecked?"none":"block";
+  }
+}
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
 async function restoreRecord(id){ if(!isAdminAllowed) return; if(!confirm(lang==="ja"?"この記録を復元しますか？":"Restore this record?"))return; await sb.from("load_records").update({deleted_at:null,deleted_by:null}).eq("id",id); await logActivity("restore","load_records",id,"記録を復元",null,null); await loadRecords(); renderHistory(); toast(lang==="ja"?"復元しました":"Restored"); }
@@ -2411,7 +2387,10 @@ function renderMaster(){
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
       <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
     </div>
-    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`<button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>`:""}
+    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`
+      <button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>
+      <button class="btn ghost small" style="margin-top:6px;width:100%" onclick="masterSortInGroup()">🔤 ${lang==="ja"?"グループ内を並べ替える（数字→英字→カナ）":"Sort within groups (num→ABC→Kana)"}</button>
+    `:""}
     <p class="hint">${note}</p>
     <div>${list.length?list.map((v,i)=>{
       const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f");
@@ -2556,6 +2535,61 @@ async function masterSortByColor(){
   if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
   else toast(lang==="ja"?"色でまとめて並べ替えました":"Reordered by color");
 }
+// コードの種類を判定（数字先頭=0, アルファベット先頭=1, カタカナ先頭=2, その他=3）
+function courseCodeType(v){
+  if(!v) return 3;
+  const c=v.charAt(0);
+  if(c>="0"&&c<="9") return 0;
+  if((c>="A"&&c<="Z")||(c>="a"&&c<="z")) return 1;
+  if(c>="ア"&&c<="ン") return 2;
+  return 3;
+}
+// コードの数値プレフィックスを抽出（例："3%" → 3、"4+" → 4、"AA" → null）
+function courseCodeNum(v){
+  const m=v.match(/^(\d+)/);
+  return m?parseInt(m[1]):null;
+}
+async function masterSortInGroup(){
+  if(!confirm(lang==="ja"
+    ?"色グループ内を「数字若い順 → アルファベット順 → カタカナ順」で並べ替えます。\n\nよろしいですか？"
+    :"Sort within each color group by: numbers → alphabet → katakana.\n\nOK?")) return;
+  const arr=(masterRows[mf.mode]||[]).slice();
+  // 色グループごとにまとめる（現在の色順は維持）
+  const COURSE_SORT_ORDER_LOCAL={course_dc1:["red","blue",""],course_dc1_4f:["red",""],course_dc1_1f:["blue",""],course_dc3:["yellow",""]};
+  const order=COURSE_SORT_ORDER_LOCAL[mf.mode]||[""];
+  const allColors=MCOLORS.map(c=>c.key);
+  const fullOrder=order.concat(allColors.filter(k=>!order.includes(k)));
+  // グループ内ソート関数
+  const sortWithinGroup=(items)=>{
+    return items.slice().sort((a,b)=>{
+      const ta=courseCodeType(a.value), tb=courseCodeType(b.value);
+      if(ta!==tb) return ta-tb; // 数字→英字→カナ
+      if(ta===0){
+        // 数字先頭：数値部分で比較し、同じなら残りの文字列で比較
+        const na=courseCodeNum(a.value), nb=courseCodeNum(b.value);
+        if(na!==nb) return na-nb;
+        return a.value.localeCompare(b.value,"ja");
+      }
+      return a.value.localeCompare(b.value,"ja");
+    });
+  };
+  // 色グループ別に分けてソート
+  const grouped={};
+  arr.forEach(r=>{ const c=r.color||""; (grouped[c]=grouped[c]||[]).push(r); });
+  const sortedArr=[];
+  fullOrder.forEach(colorKey=>{
+    if(grouped[colorKey]) sortedArr.push(...sortWithinGroup(grouped[colorKey]));
+  });
+  // その他の色
+  Object.keys(grouped).forEach(c=>{ if(!fullOrder.includes(c)) sortedArr.push(...sortWithinGroup(grouped[c])); });
+  const changed=[];
+  sortedArr.forEach((r,newIdx)=>{ if(r.sort_order!==newIdx){ r.sort_order=newIdx; changed.push(r); } });
+  masterRows[mf.mode]=sortedArr;
+  renderMaster();
+  const results=await Promise.all(changed.map(r=>sb.from("master_items").update({sort_order:r.sort_order}).eq("id",r.id)));
+  if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
+  else toast(lang==="ja"?"グループ内を並べ替えました":"Sorted within groups");
+}
 async function masterMove(i,dir){
   const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
   const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
@@ -2599,7 +2633,6 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
-/* ---------- 設定 ---------- */
 /* ---------- ENボタン：コメント翻訳 ---------- */
 let _commentOriginal=null;
 async function topbarTranslate(){
@@ -2650,7 +2683,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
