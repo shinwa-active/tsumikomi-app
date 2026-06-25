@@ -2468,46 +2468,53 @@ function renderMaster(){
   if(mf.mode==="volume"){ renderMasterVolume(); return; }
   if(mf.mode==="users"){ renderUserMgmt(); return; }
   const list=getMaster(mf.mode);
-  const tabBtn=(m,label)=>`<button class="btn small" style="flex:1;${mf.mode===m?"":"background:#f1f5f9;color:#475569"}" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
+  // マスタ画面専用：コンパクトなタブボタン
+  const tabBtn=(m,label)=>`<button style="flex:1;padding:7px 6px;font-size:12px;font-weight:700;border:2px solid ${mf.mode===m?"var(--blue)":"#e2e8f0"};border-radius:8px;background:${mf.mode===m?"var(--blue)":"#f8fafc"};color:${mf.mode===m?"#fff":"#475569"};cursor:pointer;white-space:nowrap" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
   const note = (mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?t().mCourseNote:(mf.mode==="oki_chi"?t().mOkiNote:t().mNote);
-  app.innerHTML=topbar()+header(t().masterTitle)+`<div class="pad">
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+  app.innerHTML=topbar()+header(t().masterTitle)+`<div style="padding:10px 12px 100px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("course_dc3",t().candTitle3)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー管理":"Users"))}
+    <div style="display:flex;gap:5px;margin-bottom:10px">
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー":"Users"))}
     </div>
-    <div style="display:flex;gap:8px">
-      <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
-      <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1;padding:9px 11px;font-size:14px;border:2px solid #e2e8f0;border-radius:10px;outline:none">
+      <button style="padding:9px 14px;font-size:14px;font-weight:700;border:none;border-radius:10px;background:var(--blue);color:#fff;cursor:pointer;white-space:nowrap" onclick="masterAdd()">＋ ${t().mAdd}</button>
     </div>
-    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`<button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>`:""}
-    <p class="hint">${note}</p>
+    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button style="flex:1;padding:7px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめる":"Group by color"}</button>
+        <button style="flex:1;padding:7px;font-size:12px;font-weight:600;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;cursor:pointer" onclick="masterSortInGroup()">🔤 ${lang==="ja"?"数字→英字→カナ順":"Sort A→Z"}</button>
+      </div>
+    `:""}
+    <p style="color:#94a3b8;font-size:11px;margin:4px 0 8px">${note}</p>
     <div>${list.length?list.map((v,i)=>{
       const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f");
       const col=isCourse?colorOf(mf.mode,v):"";
-      const swatches=isCourse?`<div style="display:flex;gap:6px;margin-top:8px">`+MCOLORS.map(c=>`<button onclick="masterColor(${i},'${c.key}')" title="${c.label}" style="width:30px;height:30px;border-radius:8px;background:${c.bg};border:2px solid ${col===c.key?"#0f172a":c.bd};${c.key===""?"position:relative":""}">${c.key===""?'<span style=\"font-size:11px;color:#94a3b8\">なし</span>':(col===c.key?'<span style=\"color:#0f172a\">✓</span>':"")}</button>`).join("")+`</div>`:"";
-      return `<div class="card" style="display:block">
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <button class="chip" style="padding:8px 14px;font-size:18px;${i===0?"opacity:.35":""}" onclick="masterMove(${i},-1)">▲</button>
-            <button class="chip" style="padding:8px 14px;font-size:18px;${i===list.length-1?"opacity:.35":""}" onclick="masterMove(${i},1)">▼</button>
+      const swatches=isCourse?`<div style="display:flex;gap:4px;margin-top:5px">`+MCOLORS.map(c=>`<button onclick="masterColor(${i},'${c.key}')" title="${c.label}" style="width:24px;height:24px;border-radius:6px;background:${c.bg};border:2px solid ${col===c.key?"#0f172a":c.bd};font-size:10px;cursor:pointer">${c.key===""?(col===""?'<span style="color:#94a3b8">x</span>':""):(col===c.key?'✓':"")}</button>`).join("")+`</div>`:"";
+      return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:5px">
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <button style="padding:3px 8px;font-size:14px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;${i===0?"opacity:.35":""}cursor:pointer" onclick="masterMove(${i},-1)">▲</button>
+            <button style="padding:3px 8px;font-size:14px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;${i===list.length-1?"opacity:.35":""}cursor:pointer" onclick="masterMove(${i},1)">▼</button>
           </div>
-          <div style="flex:1;font-weight:600;font-size:16px;padding:6px 10px;border-radius:8px;background:${isCourse?colorBg(col):"transparent"};border:${isCourse&&col?"2px solid "+colorBd(col):"none"}">${esc(v)}</div>
-          <button class="chip" onclick="masterEdit(${i})">✎</button><button class="chip" style="color:#dc2626" onclick="masterDel(${i})">🗑</button>
+          <div style="flex:1;font-weight:600;font-size:15px;padding:4px 8px;border-radius:6px;background:${isCourse?colorBg(col):"transparent"};border:${isCourse&&col?"1.5px solid "+colorBd(col):"none"}">${esc(v)}</div>
+          <button style="padding:5px 10px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer" onclick="masterEdit(${i})">✎</button>
+          <button style="padding:5px 10px;font-size:13px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer" onclick="masterDel(${i})">🗑</button>
         </div>
         ${swatches}
       </div>`;
-    }).join(""):`<p class="hint" style="text-align:center">${t().mEmpty}</p>`}</div>
-    <div style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:14px">
-      <p class="hint">${lang==="ja"?"このマスタは全員で共有されます（編集できるのは管理者だけ）。下のボタンは、この端末に残っている古いマスタを、クラウドに引き継ぐとき一度だけ押します。":"Shared with everyone. Use the button once to upload this device's old master to the cloud."}</p>
-      <button class="btn ghost small" onclick="masterUpload()">⬆ ${lang==="ja"?"この端末のマスタをクラウドに引き継ぐ":"Upload this device's master"}</button>
+    }).join(""):`<p style="color:#94a3b8;font-size:13px;text-align:center">${t().mEmpty}</p>`}</div>
+    <div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px">
+      <p style="color:#94a3b8;font-size:11px;margin:0 0 6px">${lang==="ja"?"このマスタは全員で共有されます（編集できるのは管理者だけ）。下のボタンは、この端末に残っている古いマスタを、クラウドに引き継ぐとき一度だけ押します。":"Shared with everyone. Use the button once to upload this device's old master to the cloud."}</p>
+      <button style="width:100%;padding:9px;font-size:13px;font-weight:600;border:1px solid #e2e8f0;border-radius:9px;background:#f8fafc;cursor:pointer" onclick="masterUpload()">⬆ ${lang==="ja"?"この端末のマスタをクラウドに引き継ぐ":"Upload this device's master"}</button>
     </div>
   </div>`+tabbar();
 }
