@@ -923,8 +923,8 @@ let regPhotos=[], regCourses=[], regOki=[], regDests=[];
 function renderRegister(){
   regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
-  // 本日登録済みのレコードを取得（追加で登録ボタン用）
-  const todayRecs=records.filter(r=>isToday(r.created_at)&&!r.deleted_at);
+  // 本日登録済みの【未完了】レコードのみ取得（追加で登録ボタン用）
+  const todayRecs=records.filter(r=>isToday(r.created_at)&&!r.deleted_at&&!r.completed);
   const addMoreSection=(!isViewOnly&&!isDestOnly&&todayRecs.length)?`
     <div class="panel" style="margin-bottom:4px;background:#f8fafc;border:2px solid #e2e8f0;padding:14px">
       <div style="font-weight:800;font-size:16px;color:#334155;margin-bottom:10px">➕ ${lang==="ja"?"追加で登録（本日の一覧から選ぶ）":"Add to existing record"}</div>
