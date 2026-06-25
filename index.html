@@ -6,62 +6,75 @@
 <title>横持ち管理システム</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  :root{--blue:#2563eb;--amber:#fbbf24;--green:#059669;--teal:#0d9488;--red:#dc2626;--slate:#1e293b;}
+  :root{
+    --blue:#2563eb;--amber:#fbbf24;--green:#059669;--teal:#0d9488;--red:#dc2626;--slate:#1e293b;
+    /* 同じ色相で濃淡バリエーション（色相は変更せず明度・彩度のみ調整） */
+    --blue-dark:#1d4ed8;--blue-soft:#eff6ff;
+    --green-dark:#047857;--green-soft:#ecfdf5;
+    --teal-dark:#0f766e;--teal-soft:#f0fdfa;
+    --amber-dark:#d97706;--amber-soft:#fffbeb;
+    --red-soft:#fef2f2;
+    --ink:#0f172a;--ink-2:#334155;--muted:#64748b;
+    --line:#e2e8f0;--bg:#f1f5f9;--card:#ffffff;
+  }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  body{font-family:system-ui,sans-serif;margin:0;background:#f1f5f9;color:#1e293b;}
-  #app{max-width:480px;margin:0 auto;min-height:100vh;background:#f1f5f9;padding-bottom:90px;position:relative;}
-  .topbar{background:#1e293b;color:#fff;display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:13px;flex-wrap:wrap;}
-  .pill{padding:5px 12px;border-radius:999px;font-weight:bold;border:none;font-size:13px;background:#334155;color:#fff;}
-  .pill.on{background:var(--amber);color:#1e293b;}
-  .header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e2e8f0;height:54px;display:flex;align-items:center;gap:8px;padding:0 12px;z-index:10;}
-  .header .title{font-weight:bold;font-size:18px;}
-  .back{background:none;border:none;font-size:24px;padding:4px 8px;}
-  .pad{padding:16px;}
-  label{display:block;font-weight:bold;margin:12px 0 6px;}
-  input,textarea,select{width:100%;padding:14px;font-size:16px;border:2px solid #e2e8f0;border-radius:12px;outline:none;}
-  input:focus,textarea:focus{border-color:var(--blue);}
-  .btn{display:block;width:100%;padding:18px;font-size:18px;font-weight:bold;border:none;border-radius:16px;color:#fff;background:var(--blue);margin-top:10px;}
-  .btn.amber{background:var(--amber);color:#1e293b;font-size:22px;padding:28px;}
-  .btn.green{background:var(--green);}
-  .btn.teal{background:var(--teal);}
-  .btn.ghost{background:#fff;color:#1e293b;border:2px solid #e2e8f0;}
-  .btn.small{padding:12px;font-size:15px;width:auto;}
-  .chip{display:inline-block;padding:8px 12px;border-radius:999px;background:#f1f5f9;color:#475569;font-size:14px;margin:4px 4px 0 0;border:none;}
-  .chip.on{background:var(--blue);color:#fff;}
-  .card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-bottom:10px;display:flex;gap:12px;width:100%;text-align:left;}
-  .badge{padding:4px 10px;border-radius:999px;font-size:13px;font-weight:bold;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;background:var(--bg);color:var(--ink);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  #app{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);padding-bottom:100px;position:relative;}
+  .topbar{background:var(--slate);color:#fff;display:flex;align-items:center;gap:8px;padding:12px 14px;font-size:15px;flex-wrap:wrap;}
+  .pill{padding:9px 16px;border-radius:999px;font-weight:700;border:none;font-size:15px;background:#334155;color:#fff;min-height:40px;}
+  .pill.on{background:var(--amber);color:var(--slate);}
+  .header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);min-height:62px;display:flex;align-items:center;gap:8px;padding:0 14px;z-index:10;box-shadow:0 1px 3px rgba(15,23,42,.04);}
+  .header .title{font-weight:800;font-size:21px;letter-spacing:.01em;}
+  .back{background:none;border:none;font-size:28px;padding:6px 10px;color:var(--ink-2);min-width:44px;min-height:44px;}
+  .pad{padding:18px;}
+  label{display:block;font-weight:700;margin:16px 0 8px;font-size:17px;color:var(--ink);}
+  input,textarea,select{width:100%;padding:16px;font-size:18px;border:2px solid var(--line);border-radius:14px;outline:none;background:#fff;}
+  input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 4px rgba(37,99,235,.12);}
+  .btn{display:block;width:100%;padding:20px;font-size:20px;font-weight:800;border:none;border-radius:18px;color:#fff;background:var(--blue);margin-top:12px;min-height:62px;box-shadow:0 2px 8px rgba(37,99,235,.18);letter-spacing:.01em;}
+  .btn:active{transform:translateY(1px);}
+  .btn.amber{background:var(--amber);color:var(--slate);font-size:24px;padding:30px;box-shadow:0 3px 12px rgba(251,191,36,.3);}
+  .btn.green{background:var(--green);box-shadow:0 2px 8px rgba(5,150,105,.2);}
+  .btn.teal{background:var(--teal);box-shadow:0 2px 8px rgba(13,148,136,.2);}
+  .btn.ghost{background:#fff;color:var(--ink);border:2px solid var(--line);box-shadow:none;}
+  .btn.small{padding:14px 18px;font-size:16px;width:auto;min-height:52px;box-shadow:none;}
+  .chip{display:inline-block;padding:12px 18px;border-radius:999px;background:#fff;color:var(--ink-2);font-size:17px;font-weight:600;margin:5px 5px 0 0;border:2px solid var(--line);min-height:48px;}
+  .chip.on{background:var(--blue);color:#fff;border-color:var(--blue);box-shadow:0 2px 6px rgba(37,99,235,.25);}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px;display:flex;gap:14px;width:100%;text-align:left;box-shadow:0 1px 4px rgba(15,23,42,.05);}
+  .badge{padding:6px 14px;border-radius:999px;font-size:15px;font-weight:700;}
   .b-green{background:#d1fae5;color:#065f46;} .b-amber{background:#fef3c7;color:#92400e;}
   .b-red{background:#fee2e2;color:#991b1b;} .b-teal{background:#ccfbf1;color:#115e59;}
-  .thumb{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#e2e8f0;flex-shrink:0;}
-  .row{display:flex;padding:12px 0;border-bottom:1px solid #f1f5f9;}
-  .row .k{width:110px;color:#64748b;font-size:14px;flex-shrink:0;}
-  .panel{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:14px;margin-bottom:12px;}
-  .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;background:#fff;border-top:1px solid #e2e8f0;display:flex;}
-  .tab{flex:1;padding:10px;text-align:center;color:#94a3b8;background:none;border:none;font-size:12px;font-weight:bold;}
+  .thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;background:#e2e8f0;flex-shrink:0;}
+  .row{display:flex;padding:15px 0;border-bottom:1px solid #f1f5f9;align-items:center;}
+  .row:last-child{border-bottom:none;}
+  .row .k{width:118px;color:var(--muted);font-size:16px;flex-shrink:0;font-weight:600;}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:0 1px 4px rgba(15,23,42,.05);}
+  .tabbar{position:fixed;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;background:#fff;border-top:1px solid var(--line);display:flex;box-shadow:0 -2px 12px rgba(15,23,42,.06);}
+  .tab{flex:1;padding:12px 8px 10px;text-align:center;color:var(--muted);background:none;border:none;font-size:14px;font-weight:700;min-height:64px;}
   .tab.on{color:var(--blue);}
-  .tab .ic{font-size:22px;display:block;}
-  .toast{position:fixed;bottom:100px;left:0;right:0;max-width:480px;margin:0 auto;padding:0 16px;z-index:50;}
-  .toast .in{background:#0f172a;color:#fff;border-radius:12px;padding:14px;text-align:center;font-weight:bold;}
-  .stat{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;}
-  .stat .n{font-size:30px;font-weight:800;}
-  .bar{height:24px;border-radius:999px;background:#3b82f6;color:#fff;font-size:13px;font-weight:bold;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;min-width:24px;}
-  .err{color:var(--red);font-weight:bold;margin-top:8px;text-align:center;}
-  .hint{color:#94a3b8;font-size:12px;}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .tab .ic{font-size:26px;display:block;margin-bottom:2px;}
+  .toast{position:fixed;bottom:110px;left:0;right:0;max-width:520px;margin:0 auto;padding:0 18px;z-index:50;}
+  .toast .in{background:#0f172a;color:#fff;border-radius:14px;padding:18px;text-align:center;font-weight:700;font-size:18px;box-shadow:0 6px 20px rgba(15,23,42,.3);}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;}
+  .stat .n{font-size:36px;font-weight:800;}
+  .bar{height:28px;border-radius:999px;background:#3b82f6;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:flex-end;padding-right:10px;min-width:28px;}
+  .err{color:var(--red);font-weight:700;margin-top:10px;text-align:center;font-size:16px;}
+  .hint{color:var(--muted);font-size:15px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
   .center{display:flex;align-items:center;justify-content:center;min-height:70vh;flex-direction:column;}
-  .cand-list{max-height:150px;}
+  .cand-list{max-height:180px;}
 
   /* ===== PC・タブレット対応（768px以上） ===== */
   @media (min-width:768px){
+    body{font-size:18px;}
     #app{max-width:1100px;padding-bottom:24px;}
     .tabbar{max-width:1100px;}
     .toast{max-width:1100px;}
     .header{position:sticky;}
     .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
-    .list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+    .list-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;}
     .list-grid .card{margin-bottom:0;}
-    .dash-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
-    .cand-list{max-height:420px;}
+    .dash-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+    .cand-list{max-height:460px;}
   }
   @media (min-width:1100px){
     #app{max-width:1280px;}
@@ -226,7 +239,7 @@ async function loadMaster(){
   const {data,error}=await sb.from("master_items").select("*").order("sort_order",{ascending:true});
   if(error){ console.error(error); return; }
   const m={};
-  (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order,color:r.color||""}); });
+  (data||[]).forEach(r=>{ (m[r.kind]=m[r.kind]||[]).push({id:r.id,value:r.value,sort_order:r.sort_order,color:r.color||"",used_at:r.used_at||null}); });
   masterRows=m;
   if(view.name==="master") renderMaster();
   else if((view.name==="register"||view.name==="addmore") && document.getElementById("candArea")){
@@ -275,7 +288,6 @@ async function loadRecords(){
   const all = data||[];
   records = all.filter(r=>!r.deleted_at);
   deletedRecords = all.filter(r=>r.deleted_at);
-  if(view.name==="register"||view.name==="addmore") return;
   render();
 }
 let deletedRecords=[];
@@ -287,7 +299,6 @@ async function loadYoko(){
   const {data,error}=await sb.from("yokomochi_status").select("*").order("sort_order",{ascending:true});
   if(error){ console.error(error); return; }
   yoku=data||[];
-  if(view.name==="register"||view.name==="addmore") return;
   if(view.name==="home") render();
 }
 async function toggleYoko(id){
@@ -684,6 +695,13 @@ async function afterLogin(){
   await loadYoko();
   await loadPal();
   await loadMaster();
+  // 31日以上未使用のコース記号を自動削除（管理者権限時のみ・1日1回）
+  if(isAdminAllowed){
+    const todayKey=todayStr();
+    if(localStorage.getItem("lastCourseClean")!==todayKey){
+      try{ await cleanupOldCourses(); localStorage.setItem("lastCourseClean",todayKey); }catch(e){ console.error("cleanup failed",e); }
+    }
+  }
   await loadVol();
   await loadDirectLoad();
   sb.channel("rt").on("postgres_changes",{event:"*",schema:"public",table:"load_records"},loadRecords)
@@ -706,14 +724,14 @@ function go(name,params){
     }
     pendingCompleteId=null;
   }
-  view=Object.assign({name},params||{}); _commentOriginal=null; render(); window.scrollTo(0,0);
+  view=Object.assign({name},params||{}); render(); window.scrollTo(0,0);
 }
 function topbar(){
   return `<div class="topbar">
     <span style="opacity:.7">${lang==="ja"?"あなたは":"You are"}</span>
     <button class="pill ${role==="worker"?"on":""}" onclick="enterWorker()">${t().worker}</button>
     <button class="pill ${role==="admin"?"on":""}" style="${isAdminAllowed?"":"opacity:.35"}" onclick="${isAdminAllowed?"enterAdmin()":""}">${t().manager}</button>
-    <button class="pill" id="topbarTransBtn" style="margin-left:auto" onclick="topbarTranslate()">⚙ ${lang==="ja"?"日本語":"EN"}</button>
+    <button class="pill" style="margin-left:auto" onclick="go('settings')">⚙ ${lang==="ja"?"日本語":"EN"}</button>
   </div>`;
 }
 function header(title,back){
@@ -866,9 +884,7 @@ async function render(){
   else if(view.name==="volume"){ renderVolume(); return; }
   else if(view.name==="list"){
     app.innerHTML=topbar()+header(t().listTitle,role==="worker"?"go('home')":null)+`<div class="pad"><div id="lst" class="list-grid">${t().loading}</div></div>`+tabbar();
-    const todayRecords=records.filter(r=>isToday(r.created_at));
-    const html=await listHtml(todayRecords);
-    document.getElementById("lst").innerHTML=html||`<p style="color:#94a3b8;text-align:center;padding:24px">${lang==="ja"?"本日の登録はありません":"No records today"}</p>`;
+    document.getElementById("lst").innerHTML=await listHtml(records);
   }
   else if(view.name==="detail"){ renderDetail(view.id); return; }
   else if(view.name==="addmore"){ renderAddMore(view.id); return; }
@@ -983,6 +999,7 @@ async function saveAddMore(id){
   const addPlDc3 = regCourses.filter(c=>c.grp==="course_dc3").reduce((s,c)=>s+(c.pl||0),0);
   try{
     await sb.from("courses").insert(regCourses.map(c=>({record_id:r.id,code:c.code,pl:c.pl,checked:false})));
+    await syncCoursesToMaster(regCourses);
     await sb.from("load_records").update({
       oki_chi: mergedOki.join("、"),
       destination: mergedDest.join("、"),
@@ -1027,15 +1044,12 @@ let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
 
+  // 積み地・納品先・トラックが揃うまでコースエリアをロック
   const truckEl=document.getElementById("truck");
-  let truckVal=truckEl?truckEl.value.trim():"";
-  if(!truckVal && view.name==="addmore"){
-    const addRec=records.find(x=>String(x.id)===String(view.id));
-    if(addRec && addRec.truck) truckVal=addRec.truck;
-  }
+  const truckVal=truckEl?truckEl.value.trim():"";
   const missing=[];
   if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading location");
-  if(view.name!=="addmore" && !regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
+  if(!regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
   if(!truckVal) missing.push(lang==="ja"?"トラック":"Truck");
   if(missing.length){
     area.innerHTML=`<div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;color:#64748b">
@@ -1050,9 +1064,9 @@ function drawCandidates(){
   const grp=(key,title)=>{
     const arr=getMaster(key); if(!arr.length) return "";
     const inMix = mix && mix.key===key;
-    const head=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-        <div style="font-weight:bold;font-size:14px;color:#475569">${title}${inMix?"":"（"+(lang==="ja"?"押すと追加":"tap to add")+"）"}</div>
-        <button class="chip" style="margin-left:auto;${inMix?"background:#7c3aed;color:#fff":"background:#ede9fe;color:#6d28d9"}" onclick="mixToggle('${key}')">${inMix?(lang==="ja"?"混載やめる":"cancel"):(lang==="ja"?"＋混載":"mix")}</button>
+    const head=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="font-weight:800;font-size:17px;color:var(--ink)">${title}${inMix?"":"（"+(lang==="ja"?"押すと追加":"tap to add")+"）"}</div>
+        <button class="chip" style="margin-left:auto;${inMix?"background:#7c3aed;color:#fff;border-color:#7c3aed":"background:#ede9fe;color:#6d28d9;border-color:#ddd6fe"}" onclick="mixToggle('${key}')">${inMix?(lang==="ja"?"混載やめる":"cancel"):(lang==="ja"?"＋混載":"mix")}</button>
       </div>`;
     const pickBar = inMix?`<div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:8px;margin-bottom:6px">
         <div style="font-size:12px;color:#6d28d9;margin-bottom:4px">${lang==="ja"?"同じパレットに混ぜるコースを選ぶ（合計で1PL）":"pick courses for one pallet (1 PL)"}</div>
@@ -1126,15 +1140,20 @@ function pickDest(i){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const arr=getMaster("dest"); const v=arr[i]; if(v==null) return;
   const idx=regDests.indexOf(v);
-  if(idx>=0){ regDests.splice(idx,1); } else {
-    let baseDests=regDests;
-    if(view.name==="addmore"){
-      const addRec=records.find(x=>String(x.id)===String(view.id));
-      const ed=(addRec&&addRec.destination)?String(addRec.destination).split("、").filter(Boolean):[];
-      baseDests=[...ed,...regDests];
+  if(idx>=0){
+    // 選択解除は常に許可
+    regDests.splice(idx,1);
+  } else {
+    // DC3を選ぼうとしたとき、既に他の納品先がある場合はブロック
+    if(v.indexOf("DC3")>=0 && regDests.length>0){
+      toast(lang==="ja"?"DC3は他の納品先と積み合わせできません。先に他の納品先を外してください。":"DC3 cannot be combined with other destinations.");
+      return;
     }
-    if(v.indexOf("DC3")>=0 && baseDests.length>0){ toast(lang==="ja"?"DC3は他の納品先と積み合わせできません（既存："+baseDests.join("、")+"）。":"DC3 cannot be combined with other destinations."); return; }
-    if(v.indexOf("DC3")<0 && baseDests.some(d=>d.indexOf("DC3")>=0)){ toast(lang==="ja"?"DC3が含まれているため他の納品先は追加できません。":"Cannot add other destinations while DC3 is selected."); return; }
+    // DC3以外を選ぼうとしたとき、既にDC3が選ばれている場合はブロック
+    if(v.indexOf("DC3")<0 && regDests.some(d=>d.indexOf("DC3")>=0)){
+      toast(lang==="ja"?"DC3が選択中のため他の納品先は追加できません。先にDC3を外してください。":"Cannot add other destinations while DC3 is selected.");
+      return;
+    }
     regDests.push(v);
   }
   drawDest(); drawCandidates(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
@@ -1294,18 +1313,20 @@ function closeQr(){
 function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; } const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
 function addCourseG(key){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
+  // 納品先によるコースグループ制限チェック
   if(courseGrpBlocked(key)){ toast(courseGrpBlockMsg(key)); return; }
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
   const c=ci.value.trim(); if(!c) return;
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
-  const grpLabel={course_dc3:"DC3行き",course_dc1_4f:"DC1 4F行き",course_dc1_1f:"DC1 1F行き"};
-  for(const otherKey of ["course_dc3","course_dc1_4f","course_dc1_1f"]){
-    if(otherKey===key) continue;
-    if(getMaster(otherKey).includes(c)){ toast(lang==="ja"?`「${c}」は${grpLabel[otherKey]}のコースです。そちらから選択してください。`:`"${c}" belongs to ${grpLabel[otherKey]}.`); return; }
-  }
   const partials=isPartialDirectLoadCode(c);
-  if(partials.length){ if(!confirm(lang==="ja"?`${c} は ${partials.map(r=>r.location).join("、")} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading today.\n\nAdd anyway?`)) return; }
-  if(mix && mix.key===key){ mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return; }
+  if(partials.length){
+    const locs=partials.map(r=>r.location).join("、");
+    const msg=lang==="ja"?`${c} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading at ${locs} today.\n\nAdd anyway?`;
+    if(!confirm(msg)) return;
+  }
+  if(mix && mix.key===key){
+    mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return;
+  }
   const p=parseInt(pi&&pi.value)||1; regCourses.push({code:c,pl:p,grp:key}); ci.value=""; if(pi) pi.value=""; drawCourses();
 }
 function courseRow(c,i){
@@ -1328,44 +1349,27 @@ function drawCourses(){
   if(view.name==="addmore"){ if(typeof updateAnomAddMore==="function") updateAnomAddMore(); }
   else if(typeof updateAnom==="function") updateAnom();
 }
-/* ---- 積み地×実際に選んだコースグループの第一優先チェック ---- */
+/* ---- 積み地ごとの第一優先チェック ---- */
+// 戻り値: 違反している積み地名の配列（空なら問題なし）
 function checkPriorityOki(){
   if(!regOki.length || !regCourses.length) return [];
-  const hasPriColor = regCourses.some(c=>{ const color=colorOf(c.grp,c.code); return color==="red"||color==="yellow"||color==="blue"; });
-  if(hasPriColor) return [];
-  const has4f=regCourses.some(c=>c.grp==="course_dc1_4f");
-  const has1f=regCourses.some(c=>c.grp==="course_dc1_1f");
-  const hasDc3=regCourses.some(c=>c.grp==="course_dc3");
-  const hasAnyGrp=has4f||has1f||hasDc3;
-  let allDests=[...regDests];
-  if(view.name==="addmore"){
-    const addRec=records.find(x=>String(x.id)===String(view.id));
-    if(addRec&&addRec.destination) allDests=[...new Set([...String(addRec.destination).split("、").filter(Boolean),...regDests])];
-  }
-  const violated=[];
-  for(const oki of regOki){
-    for(const route of ROUTES.filter(r=>r.pri&&r.from===oki.trim())){
-      if(hasAnyGrp){
-        const match=(route.to==="DC1 4F"&&has4f)||(route.to==="DC1 1F"&&has1f)||(route.to==="DC3"&&hasDc3);
-        if(!match) continue;
-      } else {
-        const dm=allDests.length===0||allDests.some(d=>{
-          if(route.to==="DC1 4F") return d.indexOf("DC1 4F")>=0||d.indexOf("DC14F")>=0;
-          if(route.to==="DC1 1F") return d.indexOf("DC1")>=0&&d.indexOf("DC1 4F")<0&&d.indexOf("DC14F")<0;
-          if(route.to==="DC3") return d.indexOf("DC3")>=0;
-          return false;
-        });
-        if(!dm) continue;
-      }
-      const ym=yoku.find(y=>y.label===route.label&&y.priority);
-      if(ym&&!ydone(ym)) violated.push(route.label);
-    }
-  }
-  return [...new Set(violated)];
+  // 選択中コースに赤・黄・青が1つでもあれば問題なし
+  const hasPriColor = regCourses.some(c=>{
+    const color = colorOf(c.grp, c.code);
+    return color==="red"||color==="yellow"||color==="blue";
+  });
+  if(hasPriColor) return []; // 第一優先コースが混在 → OK
+  // 通常コースのみ選択されている → 各積み地の第一優先完了状態を確認
+  const violated = regOki.filter(oki=>{
+    const prefix = oki.trim();
+    // yoku の中でこの積み地ラベルに対応し、priority=true かつ未完了のものが1つでもあるか
+    return yoku.some(r=>yokoGroupPrefix(r.label)===prefix && r.priority && !ydone(r));
+  });
+  return violated;
 }
 function priorityOkiMsg(violated){
-  if(lang!=="ja") return violated.map(v=>`${v}: Priority not done yet. Please include a priority course.`).join(" / ");
-  return violated.map(v=>`「${v}」が未完了です。第一優先コースを含めてください。`).join("　");
+  if(lang!=="ja") return violated.map(v=>`${v}: Priority routes not done yet. Please include a priority course.`).join(" / ");
+  return violated.map(v=>`${v} の第一優先（赤/黄/青）が未完了です。第一優先コースを含めてください。`).join("　");
 }
 /* ---- 納品先によるコースグループ制限 ---- */
 // 選択中の納品先からDC1のみ/DC3のみ/両方/制限なしを返す
@@ -1455,6 +1459,48 @@ async function ensureMasterValue(kind,v){
   const {data,error}=await sb.from("master_items").insert({kind:kind,value:v,sort_order:so,color:""}).select();
   if(!error&&data){ (masterRows[kind]=masterRows[kind]||[]).push({id:data[0].id,value:v,sort_order:so,color:""}); }
 }
+// 登録されたコードを master_items に自動追加し、used_at を更新する
+// grp: course_dc3 / course_dc1_4f / course_dc1_1f / course_dc1 / manual
+async function syncCoursesToMaster(courses){
+  // grp ごとにコードをまとめる
+  const grpMap={};
+  for(const c of courses){
+    let kind=c.grp;
+    if(!kind||kind==="manual") continue; // grpが無い手動入力はスキップ（どのグループか不明なため）
+    if(!["course_dc3","course_dc1_4f","course_dc1_1f","course_dc1"].includes(kind)) continue;
+    (grpMap[kind]=grpMap[kind]||new Set()).add(c.code);
+  }
+  const nowIso=new Date().toISOString();
+  for(const kind of Object.keys(grpMap)){
+    const existing=getMaster(kind); // 既存マスタのコード一覧
+    for(const code of grpMap[kind]){
+      if(existing.includes(code)){
+        // 既存 → used_at だけ更新
+        const row=(masterRows[kind]||[]).find(r=>r.value===code);
+        if(row){ await sb.from("master_items").update({used_at:nowIso}).eq("id",row.id); row.used_at=nowIso; }
+      } else {
+        // 新規 → マスタに追加
+        const so=(masterRows[kind]||[]).reduce((mx,r)=>Math.max(mx,r.sort_order||0),0)+1;
+        const {data,error}=await sb.from("master_items").insert({kind,value:code,sort_order:so,color:"",used_at:nowIso}).select();
+        if(!error&&data){ (masterRows[kind]=masterRows[kind]||[]).push({id:data[0].id,value:code,sort_order:so,color:"",used_at:nowIso}); }
+      }
+    }
+  }
+}
+
+// 31日以上使われていないコース記号を自動削除する
+async function cleanupOldCourses(){
+  const cutoff=new Date(Date.now()-31*24*60*60*1000).toISOString();
+  for(const kind of ["course_dc3","course_dc1_4f","course_dc1_1f","course_dc1"]){
+    const rows=masterRows[kind]||[];
+    const toDelete=rows.filter(r=>r.used_at && r.used_at<cutoff);
+    for(const row of toDelete){
+      const {error}=await sb.from("master_items").delete().eq("id",row.id);
+      if(!error){ masterRows[kind]=(masterRows[kind]||[]).filter(r=>r.id!==row.id); }
+    }
+  }
+}
+
 async function saveRecord(){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const req=anomRequired();
@@ -1494,7 +1540,7 @@ async function saveRecord(){
       const up=await sb.storage.from("photos").upload(path,f,{contentType:f.type||"image/jpeg"});
       if(!up.error){ await sb.from("photos").insert({record_id:rec.id,storage_path:path,kind:"load",taken_at:new Date().toISOString()}); }
     }
-    if(regCourses.length) await sb.from("courses").insert(regCourses.map(c=>({record_id:rec.id,code:c.code,pl:c.pl,checked:false})));
+    if(regCourses.length){ await sb.from("courses").insert(regCourses.map(c=>({record_id:rec.id,code:c.code,pl:c.pl,checked:false}))); await syncCoursesToMaster(regCourses); }
     if(a.length) await sb.from("anomaly_logs").insert(a.map(m=>({record_id:rec.id,type:"input",message:m})));
     await sb.from("notifications").insert({record_id:rec.id,message:`${dest||"-"} / ${truck||"-"} 登録`});
     await logActivity("insert","load_records",rec.id,`${dest||"-"} / ${truck||"-"}`,null,{destination:dest,truck:truck,pallets:pallets});
@@ -1510,50 +1556,19 @@ async function renderDetail(id){
   const r=records.find(x=>String(x.id)===String(id));
   if(!r){ go(role==="worker"?"list":"search"); return; }
   const courses=(r.courses||[]).slice().sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
-  // PLチェック数の取得（checked_atに数値文字列で保存）
-  // getCntはグローバル関数を使用
-  const allChecked = courses.length===0 || courses.every(c=>getCnt(c)>=(c.pl||1));
+  const allChecked = courses.length===0 || courses.every(c=>c.checked);
   let photosHtml=""; window._photoUrls=[];
   if(r.photos&&r.photos.length){ for(const p of r.photos){ const u=await urlFor(p.storage_path); if(u){ const idx=window._photoUrls.push(u)-1; photosHtml+=`<img src="${u}" onclick="openPhoto(${idx})" style="width:110px;height:110px;border-radius:12px;object-fit:cover">`; } } }
   else photosHtml=`<div class="hint">${lang==="ja"?"写真なし":"No photos"}</div>`;
   if(window._photoUrls.length) photosHtml+=`<div style="width:100%;color:#94a3b8;font-size:12px">${lang==="ja"?"写真をタップすると大きく表示できます":"Tap a photo to enlarge"}</div>`;
   const info=[[t().fOki,r.oki_chi],[t().fDest,r.destination],[t().fTruck,r.truck],[t().fPallets,t().pl(r.pallets||0)],[t().iWorker,maskName(r.worker_name)],
-    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)]];
-  const commentVal=r.comment||t().none;
-  const commentRow=`<div class="row"><div class="k">${t().iComment}</div><div id="detailComment" style="font-weight:500">${esc(commentVal)}</div></div>`;
+    [t().iPhoto,dayLabel(r.created_at)+" "+hhmm(r.created_at)],[t().iComment,r.comment||t().none]];
   let courseBox="";
   if(courses.length){
-    const canCheck=r.completed&&!r.dest_confirmed&&!isViewOnly;
-    const courseRows=courses.map(c=>{
-      const pl=c.pl||1;
-      const cnt=getCnt(c);
-      const allDone=cnt>=pl;
-      // 積込完了後のみチェックボタンを表示、完了前はコース名とPL数のみ
-      if(!canCheck){
-        return `<div id="courseRow_${c.id}" style="border:2px solid #e2e8f0;background:#fff;border-radius:12px;padding:12px;margin-top:8px;display:flex;align-items:center;gap:8px;">
-          <b style="font-size:17px">${esc(c.code)}</b>
-          <span style="margin-left:auto;color:#64748b;font-size:14px">${pl} PL</span>
-        </div>`;
-      }
-      // PL数分の大きなボタンを横並びで表示
-      const plBtns=Array.from({length:pl},(_,i)=>{
-        const checked=i<cnt;
-        return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})"
-          style="flex:1;min-height:64px;border:2px solid ${checked?"#0d9488":"#cbd5e1"};background:${checked?"#0d9488":"#f8fafc"};border-radius:12px;color:${checked?"#fff":"#94a3b8"};font-size:28px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;">
-          ${checked?"✓":"○"}
-        </button>`;
-      }).join("");
-      return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:12px;padding:12px;margin-top:8px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-          <b style="font-size:18px">${esc(c.code)}</b>
-          <span style="margin-left:auto;color:#64748b;font-size:14px">${cnt}/${pl} PL</span>
-        </div>
-        <div style="display:flex;gap:8px;">${plBtns}</div>
-      </div>`;
-    }).join("");
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
-      ${canCheck?`<p class="hint">${t().tapCheck}</p>`:""}
-      ${courseRows}</div>`;
+      ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
+      ${courses.map(c=>`<button onclick="toggleCourse('${c.id}','${r.id}',${c.checked})" ${(!r.completed||r.dest_confirmed||isViewOnly)?"disabled":""} style="width:100%;display:flex;align-items:center;gap:10px;border:2px solid ${c.checked?"#5eead4":"#e2e8f0"};background:${c.checked?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${(!r.completed||r.dest_confirmed||isViewOnly)?"opacity:.5":""}">
+        <span style="font-size:22px;color:${c.checked?"#0d9488":"#cbd5e1"}">${c.checked?"✓":"○"}</span><b style="font-size:17px">${esc(c.code)}</b><span style="margin-left:auto;color:#64748b">${c.pl} PL</span></button>`).join("")}</div>`;
   }
   let actions="";
   if(!r.completed){
@@ -1561,12 +1576,12 @@ async function renderDetail(id){
     actions+=`<button class="btn ghost" style="${(isViewOnly||isDestOnly)?"opacity:.5":""}" onclick="go('addmore',{id:'${r.id}'})">➕ ${lang==="ja"?"追加で登録":"Add more"}</button>`;
   }
   if(r.completed && !r.dest_confirmed) actions+=`<div class="panel" style="background:#f0fdfa;border:2px solid #99f6e4"><b style="color:#115e59">📦 ${t().destSection}</b>
-    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p id="checkAllMsg_${r.id}" class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
+    <button class="btn teal" style="${isViewOnly?"opacity:.5":""}" onclick="confirmDest('${r.id}',${allChecked})">📦 ${t().destBtn}</button>${allChecked?"":`<p class="hint" style="text-align:center;color:#0f766e">${t().checkAll}</p>`}</div>`;
   let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">${photosHtml}</div>
-    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}${commentRow}</div>
+    <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}</div>
     ${courseBox}${actions}${adminRow}
   </div>`;
 }
@@ -1592,59 +1607,7 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
-// PLごとの個別ボタン：押したインデックスをトグル
-// i番目が未チェック→チェック、i番目がチェック済み→i番目まで戻す
-// PLチェック数取得（checked_atに数値文字列で記録）
-function getCnt(c){ if(!c||!c.checked) return 0; const n=parseInt(c.checked_at); return (!isNaN(n)&&n>=1&&n<=(c.pl||1))?n:(c.pl||1); }
-
-async function tapCoursePl(cid, rid, tapIdx, pl){
-  if(isViewOnly) return viewOnlyBlock();
-  const rec=records.find(x=>String(x.id)===String(rid));
-  if(!rec||!rec.courses) return;
-  const course=rec.courses.find(c=>String(c.id)===String(cid));
-  if(!course) return;
-  let curCnt=getCnt(course);
-  // tapIdxが現在のcurCnt-1より小さい（チェック済みボタンをタップ）→ tapIdx個に戻す
-  // tapIdxがcurCnt以上（未チェックボタンをタップ）→ tapIdx+1個にする
-  const newCnt = tapIdx < curCnt ? tapIdx : tapIdx + 1;
-  const newChecked = newCnt >= pl;
-  const newCheckedAt = newCnt > 0 ? String(newCnt) : null;
-  await sb.from("courses").update({checked:newChecked, checked_at:newCheckedAt}).eq("id",cid);
-  course.checked=newChecked; course.checked_at=newCheckedAt;
-  // DOM更新
-  const rowEl=document.getElementById("courseRow_"+cid);
-  if(rowEl){
-    rowEl.style.border=`2px solid ${newChecked?"#5eead4":"#e2e8f0"}`;
-    rowEl.style.background=newChecked?"#f0fdfa":"#fff";
-    const cntEl=rowEl.querySelector("span[style*='#64748b']");
-    if(cntEl) cntEl.textContent=`${newCnt}/${pl} PL`;
-    const btns=rowEl.querySelectorAll("button");
-    btns.forEach((btn,i)=>{
-      const checked=i<newCnt;
-      btn.style.border=`2px solid ${checked?"#0d9488":"#cbd5e1"}`;
-      btn.style.background=checked?"#0d9488":"#f8fafc";
-      btn.style.color=checked?"#fff":"#94a3b8";
-      btn.textContent=checked?"✓":"○";
-    });
-  }
-  if(rec.courses){
-    const getCntL=c=>{ if(c.checked){ const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; } const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1)?n:0; };
-    const allDone=rec.courses.every(c=>getCntL(c)>=(c.pl||1));
-    const destBtn=document.querySelector(`button[onclick*="confirmDest('${rid}'"]`);
-    if(destBtn) destBtn.setAttribute("onclick",`confirmDest('${rid}',${allDone})`);
-    const msg=document.getElementById("checkAllMsg_"+rid);
-    if(msg) msg.style.display=allDone?"none":"block";
-  }
-}
-async function tapCourseRow(cid,rid,pl){ await tapCoursePl(cid,rid,getCnt(records.find(x=>String(x.id)===String(rid))?.courses?.find(c=>String(c.id)===String(cid))||{}),pl); }
-async function toggleCourse(cid,rid,cur){
-  if(isViewOnly) return viewOnlyBlock();
-  const rec=records.find(x=>String(x.id)===String(rid));
-  const course=rec&&rec.courses?rec.courses.find(c=>String(c.id)===String(cid)):null;
-  const pl=course?course.pl||1:1;
-  const curCnt=course?getCnt(course):0;
-  await tapCoursePl(cid,rid,curCnt>=pl?0:curCnt,pl);
-}
+async function toggleCourse(cid,rid,cur){ if(isViewOnly) return viewOnlyBlock(); await sb.from("courses").update({checked:!cur,checked_at:!cur?new Date().toISOString():null}).eq("id",cid); await loadRecords(); renderDetail(rid); }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
 async function restoreRecord(id){ if(!isAdminAllowed) return; if(!confirm(lang==="ja"?"この記録を復元しますか？":"Restore this record?"))return; await sb.from("load_records").update({deleted_at:null,deleted_by:null}).eq("id",id); await logActivity("restore","load_records",id,"記録を復元",null,null); await loadRecords(); renderHistory(); toast(lang==="ja"?"復元しました":"Restored"); }
@@ -2443,10 +2406,7 @@ function renderMaster(){
       <input id="mNew" placeholder="${masterModeLabel(mf.mode)}" style="flex:1">
       <button class="btn small" style="padding:0 16px" onclick="masterAdd()">＋ ${t().mAdd}</button>
     </div>
-    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`
-      <button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>
-      <button class="btn ghost small" style="margin-top:6px;width:100%" onclick="masterSortInGroup()">🔤 ${lang==="ja"?"グループ内を並べ替える（数字→英字→カナ）":"Sort within groups (num→ABC→Kana)"}</button>
-    `:""}
+    ${(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f")?`<button class="btn ghost small" style="margin-top:8px;width:100%" onclick="masterSortByColor()">🎨 ${lang==="ja"?"色でまとめて並べ替える":"Group by color"}</button>`:""}
     <p class="hint">${note}</p>
     <div>${list.length?list.map((v,i)=>{
       const isCourse=(mf.mode==="course_dc3"||mf.mode==="course_dc1"||mf.mode==="course_dc1_1f"||mf.mode==="course_dc1_4f");
@@ -2591,43 +2551,6 @@ async function masterSortByColor(){
   if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
   else toast(lang==="ja"?"色でまとめて並べ替えました":"Reordered by color");
 }
-function courseCodeType(v){
-  if(!v) return 3;
-  const c=v.charAt(0);
-  if(c>="0"&&c<="9") return 0;
-  if((c>="A"&&c<="Z")||(c>="a"&&c<="z")) return 1;
-  if(c>="ア"&&c<="ン") return 2;
-  return 3;
-}
-function courseCodeNum(v){ const m=v.match(/^(\d+)/); return m?parseInt(m[1]):null; }
-async function masterSortInGroup(){
-  if(!confirm(lang==="ja"
-    ?"色グループ内を「数字若い順 → アルファベット順 → カタカナ順」で並べ替えます。\n\nよろしいですか？"
-    :"Sort within each color group by: numbers → alphabet → katakana.\n\nOK?")) return;
-  const arr=(masterRows[mf.mode]||[]).slice();
-  const allColors=MCOLORS.map(c=>c.key);
-  const CORDER={course_dc1:["red","blue",""],course_dc1_4f:["red",""],course_dc1_1f:["blue",""],course_dc3:["yellow",""]};
-  const order=(CORDER[mf.mode]||[""]);
-  const fullOrder=order.concat(allColors.filter(k=>!order.includes(k)));
-  const sortFn=(items)=>items.slice().sort((a,b)=>{
-    const ta=courseCodeType(a.value), tb=courseCodeType(b.value);
-    if(ta!==tb) return ta-tb;
-    if(ta===0){ const na=courseCodeNum(a.value), nb=courseCodeNum(b.value); if(na!==nb) return na-nb; }
-    return a.value.localeCompare(b.value,"ja");
-  });
-  const grouped={};
-  arr.forEach(r=>{ const c=r.color||""; (grouped[c]=grouped[c]||[]).push(r); });
-  const sortedArr=[];
-  fullOrder.forEach(k=>{ if(grouped[k]) sortedArr.push(...sortFn(grouped[k])); });
-  Object.keys(grouped).forEach(c=>{ if(!fullOrder.includes(c)) sortedArr.push(...sortFn(grouped[c])); });
-  const changed=[];
-  sortedArr.forEach((r,i)=>{ if(r.sort_order!==i){ r.sort_order=i; changed.push(r); } });
-  masterRows[mf.mode]=sortedArr;
-  renderMaster();
-  const results=await Promise.all(changed.map(r=>sb.from("master_items").update({sort_order:r.sort_order}).eq("id",r.id)));
-  if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
-  else toast(lang==="ja"?"グループ内を並べ替えました":"Sorted within groups");
-}
 async function masterMove(i,dir){
   const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
   const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
@@ -2672,43 +2595,6 @@ async function masterUpload(){
 }
 
 /* ---------- 設定 ---------- */
-/* ---------- ENボタン：コメント翻訳 ---------- */
-let _commentOriginal=null;
-async function topbarTranslate(){
-  const btn=document.getElementById("topbarTransBtn");
-  const detailEl=document.getElementById("detailComment");
-  const inputEl=document.getElementById("comment");
-  const targetEl=detailEl||inputEl;
-  if(!targetEl){ go("settings"); return; }
-  const isInput=!!inputEl&&!detailEl;
-  const getText=()=>isInput?targetEl.value.trim():targetEl.textContent.trim();
-  const setText=(v)=>{ if(isInput) targetEl.value=v; else targetEl.textContent=v; };
-  const noneTexts=[t().none,"（なし）","(none)"];
-  if(_commentOriginal!==null){
-    setText(_commentOriginal); _commentOriginal=null;
-    if(btn){ btn.textContent="⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; btn.disabled=false; }
-    return;
-  }
-  const text=getText();
-  if(!text||noneTexts.includes(text)){ toast(lang==="ja"?"コメントがありません":"No comment to translate"); return; }
-  if(btn){ btn.disabled=true; btn.textContent=lang==="ja"?"翻訳中…":"…"; }
-  try{
-    const sl=lang==="ja"?"ja":"en", tl=lang==="ja"?"en":"ja";
-    const url=`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
-    const resp=await fetch(url);
-    const data=await resp.json();
-    const translated=data[0].map(seg=>seg[0]).join("");
-    if(translated){
-      _commentOriginal=text; setText(translated.trim());
-      if(btn){ btn.disabled=false; btn.textContent="↩ 元に戻す"; btn.style.background="#1d4ed8"; }
-    } else { throw new Error(); }
-  } catch(e){
-    toast(lang==="ja"?"翻訳に失敗しました":"Translation failed");
-    if(btn){ btn.disabled=false; btn.textContent="⚙ "+(lang==="ja"?"日本語":"EN"); btn.style.background="#334155"; }
-  }
-}
-
-/* ---------- 設定 ---------- */
 function renderSettings(){
   app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
     <div class="panel"><b>🌐 ${t().language}</b>
@@ -2722,7 +2608,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,tapCourseRow,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,topbarTranslate});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
