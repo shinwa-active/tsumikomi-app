@@ -156,6 +156,8 @@ let role = "worker";
 let adminAuthed = false;
 let isViewOnly = false;
 let isDestOnly = false;
+// 休日モード：ONのとき第一優先・コースグループ・積み地担当の制約を全解除
+let isHoliday = localStorage.getItem("isHoliday") === "1";
 let isAdminAllowed = false;
 const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
 const DEST_ONLY_EMAILS = ["u123456@shinwa-active.co.jp"];
@@ -945,7 +947,13 @@ function renderRegister(){
   app.innerHTML=topbar()+header(t().regTitle,"go('home')")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
     ${addMoreSection}
-    <label>${t().fOki}</label>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <label style="margin:0">${t().fOki}</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:${isHoliday?"#d97706":"#64748b"};cursor:pointer;background:${isHoliday?"#fffbeb":"#f8fafc"};border:2px solid ${isHoliday?"#f59e0b":"#e2e8f0"};border-radius:10px;padding:7px 14px">
+        <input type="checkbox" id="holidayChk" ${isHoliday?"checked":""} onchange="toggleHoliday(this.checked)" style="width:20px;height:20px;cursor:pointer;accent-color:#f59e0b">
+        🏖 ${lang==="ja"?"休日モード":"Holiday mode"}
+      </label>
+    </div>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
     <label>${t().fDest}</label>
@@ -1070,13 +1078,13 @@ function pickOki(i){
     // 選択解除は常に許可
     regOki.splice(idx,1);
   } else {
-    // 追加時：ユーザーの基本積み地と異なる場合に注意喚起
+    // 追加時：ユーザーの基本積み地と異なる場合に注意喚起（休日モード時はスキップ）
     const home=userHomeOki();
-    if(home && v!==home){
+    if(!isHoliday && home && v!==home){
       const msg=lang==="ja"
         ? `通常の作業場所（${home}）とは異なる積み地「${v}」を選択しようとしています。\nよろしいですか？`
         : `You are selecting a loading location "${v}" different from your usual location (${home}).\nContinue?`;
-      if(!confirm(msg)) return; // いいえ → 選択しない
+      if(!confirm(msg)) return;
     }
     regOki.push(v);
   }
@@ -1394,6 +1402,7 @@ function drawCourses(){
 /* ---- 積み地ごとの第一優先チェック ---- */
 // 戻り値: 違反している積み地名の配列（空なら問題なし）
 function checkPriorityOki(){
+  if(isHoliday) return []; // 休日モード：第一優先チェック全解除
   if(!regOki.length || !regCourses.length) return [];
   // 選択中コースに赤・黄・青が1つでもあれば問題なし
   const hasPriColor = regCourses.some(c=>{
@@ -1435,12 +1444,13 @@ function allowedCourseGrps(){
   return { dc1_4f:allow4f, dc1_1f:allow1f, dc3:allow3 };
 }
 function courseGrpBlocked(grp){
+  if(isHoliday) return false; // 休日モード：全グループ選択可能
   const a=allowedCourseGrps();
-  if(!a) return false; // 制限なし
+  if(!a) return false;
   if(grp==="course_dc1_4f") return !a.dc1_4f;
   if(grp==="course_dc1_1f") return !a.dc1_1f;
   if(grp==="course_dc3")    return !a.dc3;
-  return false; // course_dc1（旧）などは制限なし
+  return false;
 }
 function courseGrpBlockMsg(grp){
   const a=allowedCourseGrps();
@@ -1541,6 +1551,15 @@ async function cleanupOldCourses(){
       if(!error){ masterRows[kind]=(masterRows[kind]||[]).filter(r=>r.id!==row.id); }
     }
   }
+}
+
+function toggleHoliday(val){
+  isHoliday=val;
+  localStorage.setItem("isHoliday", val?"1":"0");
+  // チェックボックスラベルの色を即座に更新
+  const lbl=document.querySelector("label[style*='holidayChk'],label:has(#holidayChk)");
+  // ラベル色変更はrender不要 → updateAnomのみ再実行
+  if(view.name==="register"||view.name==="addmore") render();
 }
 
 async function saveRecord(){
@@ -2737,7 +2756,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,toggleHoliday});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
