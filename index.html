@@ -1528,15 +1528,21 @@ async function renderDetail(id){
       const pl=c.pl||1;
       const cnt=getCnt(c);
       const allDone=cnt>=pl;
-      // チェックアイコンをPL数分表示（表示のみ、タップは行全体で受ける）
-      const icons=Array.from({length:pl},(_,i)=>`<span style="font-size:22px;color:${i<cnt?"#0d9488":"#cbd5e1"}">${i<cnt?"✓":"○"}</span>`).join("");
-      return `<button id="courseRow_${c.id}" onclick="${canCheck?`tapCourseRow('${c.id}','${r.id}',${pl})`:""}" ${!canCheck?"disabled":""} style="width:100%;text-align:left;border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:10px;padding:12px;margin-top:6px;${!canCheck?"opacity:.5":""}">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:${pl>1?"6px":"0"}">
-          <b style="font-size:17px">${esc(c.code)}</b>
-          <span style="margin-left:auto;color:#64748b">${cnt}/${pl} PL</span>
+      // PL数分の大きなボタンを横並びで表示
+      const plBtns=Array.from({length:pl},(_,i)=>{
+        const checked=i<cnt;
+        return `<button onclick="tapCoursePl('${c.id}','${r.id}',${i},${pl})" ${!canCheck?"disabled":""}
+          style="flex:1;min-height:64px;border:2px solid ${checked?"#0d9488":"#cbd5e1"};background:${checked?"#0d9488":"#f8fafc"};border-radius:12px;color:${checked?"#fff":"#94a3b8"};font-size:28px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;${!canCheck?"opacity:.5":""}">
+          ${checked?"✓":"○"}
+        </button>`;
+      }).join("");
+      return `<div id="courseRow_${c.id}" style="border:2px solid ${allDone?"#5eead4":"#e2e8f0"};background:${allDone?"#f0fdfa":"#fff"};border-radius:12px;padding:12px;margin-top:8px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <b style="font-size:18px">${esc(c.code)}</b>
+          <span style="margin-left:auto;color:#64748b;font-size:14px">${cnt}/${pl} PL</span>
         </div>
-        ${pl>1?`<div style="display:flex;gap:8px;flex-wrap:wrap">${icons}</div>`:`<div style="display:inline-block">${icons}</div>`}
-      </button>`;
+        <div style="display:flex;gap:8px;">${plBtns}</div>
+      </div>`;
     }).join("");
     courseBox=`<div class="panel"><div style="display:flex;justify-content:space-between"><b>${t().courseList}</b><span class="hint">${t().totalPl(courses.reduce((s,c)=>s+c.pl,0))}</span></div>
       ${(r.completed && !r.dest_confirmed)?`<p class="hint">${t().tapCheck}</p>`:""}
@@ -1579,19 +1585,18 @@ async function markComplete(id){
   await loadRecords();
   if(role==="worker") go("home"); else renderDetail(id);
 }
-// 行全体タップで +1 チェック（全部チェック済みなら0に戻す）
-async function tapCourseRow(cid, rid, pl){
+// PLごとの個別ボタン：押したインデックスをトグル
+// i番目が未チェック→チェック、i番目がチェック済み→i番目まで戻す
+async function tapCoursePl(cid, rid, tapIdx, pl){
   if(isViewOnly) return viewOnlyBlock();
   const rec=records.find(x=>String(x.id)===String(rid));
   if(!rec||!rec.courses) return;
   const course=rec.courses.find(c=>String(c.id)===String(cid));
   if(!course) return;
-  // 現在のチェック数
-  let curCnt=0;
-  if(course.checked){ const n=parseInt(course.checked_at); curCnt=(!isNaN(n)&&n>=1&&n<=pl)?n:pl; }
-  else { const n=parseInt(course.checked_at); if(!isNaN(n)&&n>=1&&n<pl) curCnt=n; }
-  // +1、全部済みなら0に戻す
-  const newCnt = curCnt >= pl ? 0 : curCnt + 1;
+  let curCnt=getCnt(course);
+  // tapIdxが現在のcurCnt-1より小さい（チェック済みボタンをタップ）→ tapIdx個に戻す
+  // tapIdxがcurCnt以上（未チェックボタンをタップ）→ tapIdx+1個にする
+  const newCnt = tapIdx < curCnt ? tapIdx : tapIdx + 1;
   const newChecked = newCnt >= pl;
   const newCheckedAt = newCnt > 0 ? String(newCnt) : null;
   await sb.from("courses").update({checked:newChecked, checked_at:newCheckedAt}).eq("id",cid);
@@ -1601,18 +1606,17 @@ async function tapCourseRow(cid, rid, pl){
   if(rowEl){
     rowEl.style.border=`2px solid ${newChecked?"#5eead4":"#e2e8f0"}`;
     rowEl.style.background=newChecked?"#f0fdfa":"#fff";
-    // PLカウント更新
     const cntEl=rowEl.querySelector("span[style*='#64748b']");
     if(cntEl) cntEl.textContent=`${newCnt}/${pl} PL`;
-    // アイコン更新
-    const iconSpans=rowEl.querySelectorAll("span[style*='color:#']");
-    iconSpans.forEach((s,i)=>{
+    const btns=rowEl.querySelectorAll("button");
+    btns.forEach((btn,i)=>{
       const checked=i<newCnt;
-      s.style.color=checked?"#0d9488":"#cbd5e1";
-      s.textContent=checked?"✓":"○";
+      btn.style.border=`2px solid ${checked?"#0d9488":"#cbd5e1"}`;
+      btn.style.background=checked?"#0d9488":"#f8fafc";
+      btn.style.color=checked?"#fff":"#94a3b8";
+      btn.textContent=checked?"✓":"○";
     });
   }
-  // allChecked再確認
   if(rec.courses){
     const getCntL=c=>{ if(c.checked){ const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1&&n<=c.pl)?n:c.pl; } const n=parseInt(c.checked_at); return(!isNaN(n)&&n>=1)?n:0; };
     const allDone=rec.courses.every(c=>getCntL(c)>=(c.pl||1));
@@ -1622,13 +1626,14 @@ async function tapCourseRow(cid, rid, pl){
     if(msg) msg.style.display=allDone?"none":"block";
   }
 }
-// 後方互換
-async function tapCoursePl(cid,rid,tapIdx,pl){ await tapCourseRow(cid,rid,pl); }
+async function tapCourseRow(cid,rid,pl){ await tapCoursePl(cid,rid,getCnt(records.find(x=>String(x.id)===String(rid))?.courses?.find(c=>String(c.id)===String(cid))||{}),pl); }
 async function toggleCourse(cid,rid,cur){
   if(isViewOnly) return viewOnlyBlock();
   const rec=records.find(x=>String(x.id)===String(rid));
   const course=rec&&rec.courses?rec.courses.find(c=>String(c.id)===String(cid)):null;
-  await tapCourseRow(cid,rid,course?course.pl||1:1);
+  const pl=course?course.pl||1:1;
+  const curCnt=course?getCnt(course):0;
+  await tapCoursePl(cid,rid,curCnt>=pl?0:curCnt,pl);
 }
 async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
