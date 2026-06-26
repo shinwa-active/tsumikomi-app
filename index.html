@@ -156,6 +156,8 @@ let role = "worker";
 let adminAuthed = false;
 let isViewOnly = false;
 let isDestOnly = false;
+// 管理者が他のロールをプレビューするための変数（nullのとき実際のロールで表示）
+let previewRole = null;
 // 休日モード：ONのとき第一優先・コースグループ・積み地担当の制約を全解除
 let isHoliday = localStorage.getItem("isHoliday") === "1";
 let isAdminAllowed = false;
@@ -726,15 +728,39 @@ function go(name,params){
     }
     pendingCompleteId=null;
   }
-  view=Object.assign({name},params||{}); render(); window.scrollTo(0,0);
+  view=Object.assign({name},params||{}); _commentOriginal=null; render(); window.scrollTo(0,0);
+}
+// 管理者プレビューロール切替
+function setPreviewRole(key){
+  previewRole = key;
+  // isViewOnly / isDestOnly を一時的に書き換え
+  if(key==="view_only"){    isViewOnly=true;  isDestOnly=false; role="worker"; }
+  else if(key==="dest_only"){ isViewOnly=false; isDestOnly=true;  role="worker"; }
+  else if(key==="worker"){  isViewOnly=false; isDestOnly=false; role="worker"; }
+  else if(key==="admin"){   isViewOnly=false; isDestOnly=false; role="admin"; previewRole=null; }
+  render(); window.scrollTo(0,0);
 }
 function topbar(){
+  const isAdmin = ADMIN_EMAILS.includes(user?.email?.toLowerCase());
+  const adminPreviewBar = isAdmin ? `
+    <div style="background:#0f172a;padding:6px 14px;display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;color:#64748b;font-weight:600;margin-right:2px">${lang==="ja"?"表示確認":"Preview:"}</span>
+      ${[
+        {key:"view_only", label:lang==="ja"?"閲覧":"View"},
+        {key:"dest_only", label:lang==="ja"?"納品先":"Delivery"},
+        {key:"worker",    label:lang==="ja"?"作業者":"Worker"},
+        {key:"admin",     label:lang==="ja"?"管理者":"Manager"}
+      ].map(({key,label})=>{
+        const active = (previewRole===key)||(previewRole===null&&key==="admin");
+        return `<button onclick="setPreviewRole('${key}')" style="padding:5px 12px;font-size:12px;font-weight:700;border-radius:999px;border:2px solid ${active?"#fbbf24":"#334155"};background:${active?"#fbbf24":"transparent"};color:${active?"#1e293b":"#94a3b8"};cursor:pointer;min-height:32px">${label}</button>`;
+      }).join("")}
+    </div>` : "";
   return `<div class="topbar">
     <span style="opacity:.7">${lang==="ja"?"あなたは":"You are"}</span>
     <button class="pill ${role==="worker"?"on":""}" onclick="enterWorker()">${t().worker}</button>
     <button class="pill ${role==="admin"?"on":""}" style="${isAdminAllowed?"":"opacity:.35"}" onclick="${isAdminAllowed?"enterAdmin()":""}">${t().manager}</button>
-    <button class="pill" style="margin-left:auto" onclick="go('settings')">⚙ ${lang==="ja"?"日本語":"EN"}</button>
-  </div>`;
+    <button class="pill" id="topbarTransBtn" style="margin-left:auto" onclick="topbarTranslate()">⚙ ${lang==="ja"?"日本語":"EN"}</button>
+  </div>${adminPreviewBar}`;
 }
 function header(title,back){
   return `<div class="header">${back?`<button class="back" onclick="${back}">‹</button>`:""}<div class="title">${esc(title)}</div>
@@ -812,12 +838,12 @@ async function render(){
     const board=`<div class="panel" style="margin-top:14px">
       <b>🚚 ${lang==="ja"?"横持ち 本日の進捗":"Yokomochi today"}</b>
       <div style="display:flex;gap:8px;margin:10px 0">
-        <div style="flex:1;background:#fff7ed;border-radius:10px;padding:8px;text-align:center"><div class="hint">${lang==="ja"?"急ぎ":"Priority"}</div><div style="font-weight:800;font-size:20px;color:#c2410c">${prDone}/${pr.length}</div></div>
+        ${!isWeekend()?`<div style="flex:1;background:#fff7ed;border-radius:10px;padding:8px;text-align:center"><div class="hint">${lang==="ja"?"急ぎ":"Priority"}</div><div style="font-weight:800;font-size:20px;color:#c2410c">${prDone}/${pr.length}</div></div>`:""}
         <div style="flex:1;background:#f0fdf4;border-radius:10px;padding:8px;text-align:center"><div class="hint">${lang==="ja"?"全体":"All"}</div><div style="font-weight:800;font-size:20px;color:#15803d">${allDone}/${yoku.length}</div></div>
       </div>
-      <div style="font-weight:bold;color:#c2410c;margin-top:4px">${lang==="ja"?"第一優先（急ぎ）":"Priority"}</div>
-      <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(pr.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${pr.map(ybtn).join("")}</div>
-      <div style="font-weight:bold;color:#475569;margin-top:14px">${lang==="ja"?"通常":"Normal"}</div>
+      ${!isWeekend()?`<div style="font-weight:bold;color:#c2410c;margin-top:4px">${lang==="ja"?"第一優先（急ぎ）":"Priority"}</div>
+      <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(pr.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${pr.map(ybtn).join("")}</div>`:""}
+      <div style="font-weight:bold;color:#475569;margin-top:${!isWeekend()?"14px":"4px"}">${lang==="ja"?"通常":"Normal"}</div>
       <div style="display:grid;grid-template-rows:repeat(${Math.max(1,Math.ceil(no.length/2))},auto);grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;margin-top:8px">${no.map(ybtn).join("")}</div>
       <p class="hint" style="margin-top:8px">${(isViewOnly||isDestOnly)?(lang==="ja"?"閲覧専用のため、ここはチェックできません。":"View only: cannot check here."):(lang==="ja"?"押すと完了（緑）。もう一度押すと取り消し。翌日は自動で白紙に戻ります。":"Tap to complete; tap again to undo. Resets next day.")}</p>
     </div>`;
@@ -2756,7 +2782,7 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,toggleHoliday});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,toggleHoliday,setPreviewRole});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
