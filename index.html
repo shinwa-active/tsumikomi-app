@@ -173,6 +173,10 @@ const OKI_ATOM_EMAILS = ["u101257@shinwa-active.co.jp","u101833@shinwa-active.co
 function userHomeOki(){
   if(!user||!user.email) return null;
   const em=user.email.toLowerCase();
+  // DBのuser_rolesテーブルのoki_homeを優先
+  const dbRow=userRolesList.find(r=>r.email===em);
+  if(dbRow&&dbRow.oki_home) return dbRow.oki_home;
+  // フォールバック：index.htmlのOKI定数
   if(OKI_5F_EMAILS.includes(em)) return "DC2 5F";
   if(OKI_3F_EMAILS.includes(em)) return "DC2 3F";
   if(OKI_ATOM_EMAILS.includes(em)) return "アトム電器";
@@ -2482,44 +2486,51 @@ async function renderUserMgmt(){
   await loadUserRoles();
   const roleColors={admin:"#1e3a5f",worker:"#059669",view_only:"#7c3aed",dest_only:"#d97706"};
   const roleLabels={admin:"管理者",worker:"現場",view_only:"閲覧専用",dest_only:"納品先確認"};
+  const okiOptions=["","DC2 5F","DC2 3F","アトム電器"].map(v=>`<option value="${v}">${v||"(なし)"}</option>`).join("");
   const roleOptions=Object.entries(roleLabels).map(([v,l])=>`<option value="${v}">${l}</option>`).join("");
   const tabBtn=(m,label)=>`<button style="flex:1;padding:7px 6px;font-size:12px;font-weight:700;border:2px solid ${mf.mode===m?"var(--blue)":"#e2e8f0"};border-radius:8px;background:${mf.mode===m?"var(--blue)":"#f8fafc"};color:${mf.mode===m?"#fff":"#475569"};cursor:pointer;white-space:nowrap" onclick="mf.mode='${m}';renderMaster()">${label}</button>`;
   const userRows=userRolesList.map(u=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
+    <div style="display:flex;align-items:flex-start;gap:8px;padding:10px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap">
       <div style="min-width:0;flex:1">
         <div style="font-weight:bold;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.email)}</div>
-        <div style="font-size:12px;color:#64748b">${esc(u.note||"")}</div>
+        ${u.note?`<div style="font-size:12px;color:#0f172a;font-weight:600;margin-top:2px">📝 ${esc(u.note)}</div>`:""}
+        ${u.oki_home?`<div style="font-size:12px;color:#0d9488;font-weight:600;margin-top:1px">🏭 ${esc(u.oki_home)}</div>`:""}
       </div>
       <span style="background:${roleColors[u.role]||"#64748b"};color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:bold;white-space:nowrap">${roleLabels[u.role]||u.role}</span>
-      <button class="btn small" style="padding:4px 10px" onclick="editUserRole(${u.id},'${esc(u.email)}','${u.role}','${esc(u.note||"")}')">✏️</button>
-      <button class="btn small" style="padding:4px 10px;background:#fef2f2;color:#dc2626" onclick="deleteUserRole(${u.id},'${esc(u.email)}')">🗑</button>
+      <button style="padding:4px 10px;font-size:13px;border:1px solid #e2e8f0;border-radius:7px;background:#f8fafc;cursor:pointer" onclick="editUserRole(${u.id},'${esc(u.email)}','${u.role}','${esc(u.note||"")}','${esc(u.oki_home||"")}')">✏️</button>
+      <button style="padding:4px 10px;font-size:13px;border:1px solid #fecaca;border-radius:7px;background:#fff;color:#dc2626;cursor:pointer" onclick="deleteUserRole(${u.id},'${esc(u.email)}')">🗑</button>
     </div>`).join("");
-  app.innerHTML=topbar()+header(lang==="ja"?"ユーザー管理":"User Management")+`<div class="pad">
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+  app.innerHTML=topbar()+header(lang==="ja"?"ユーザー管理":"User Management")+`<div style="padding:10px 12px 100px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("dest","📦 "+t().mDest)}${tabBtn("truck","🚚 "+t().mTruck)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("course_dc3",t().candTitle3)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+    <div style="display:flex;gap:5px;margin-bottom:5px">
       ${tabBtn("course_dc1_4f",t().candTitle1_4f)}${tabBtn("course_dc1_1f",t().candTitle1)}
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー管理":"Users"))}
+    <div style="display:flex;gap:5px;margin-bottom:10px">
+      ${tabBtn("oki_chi","🏭 "+t().mOki)}${tabBtn("volume","📊 "+(lang==="ja"?"物量":"Volume"))}${tabBtn("users","👥 "+(lang==="ja"?"ユーザー":"Users"))}
     </div>
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:12px">
-      ${userRows||`<div class="hint" style="padding:16px;text-align:center">${lang==="ja"?"まだ登録がありません":"No users registered"}</div>`}
+    <p style="font-size:11px;color:#94a3b8;margin:0 0 6px">メモ・積み地は登録一覧や明細には表示されません。管理者のみ確認できます。</p>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;margin-bottom:10px">
+      ${userRows||`<div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px">${lang==="ja"?"まだ登録がありません":"No users registered"}</div>`}
     </div>
-    <div class="panel">
-      <b style="color:#1e3a5f">➕ ${lang==="ja"?"ユーザーを追加":"Add user"}</b>
-      <input id="uEmail" placeholder="${lang==="ja"?"メールアドレス（@前のみ）":"Email (ID part only)"}" style="margin-top:8px" maxlength="50">
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <select id="uRole" style="flex:1">${roleOptions}</select>
-        <input id="uNote" placeholder="${lang==="ja"?"メモ（任意）":"Note (optional)"}" style="flex:2" maxlength="50">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:12px">
+      <b style="color:#1e3a5f;font-size:13px">➕ ${lang==="ja"?"ユーザーを追加":"Add user"}</b>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+        <input id="uEmail" placeholder="例: u101234" style="flex:1;padding:8px 10px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px" maxlength="50">
+        <span style="font-size:12px;color:#94a3b8;white-space:nowrap">@shinwa-active.co.jp</span>
       </div>
-      <button class="btn green" style="width:100%;margin-top:8px" onclick="addUserRole()">💾 ${lang==="ja"?"追加":"Add"}</button>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <select id="uRole" style="flex:1;padding:8px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px">${roleOptions}</select>
+        <select id="uOki" style="flex:1;padding:8px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px">${okiOptions}</select>
+      </div>
+      <input id="uNote" placeholder="メモ（氏名・担当など）" style="width:100%;margin-top:6px;padding:8px 10px;font-size:13px;border:1px solid #e2e8f0;border-radius:8px" maxlength="50">
+      <button style="width:100%;padding:9px;font-size:13px;font-weight:700;border:none;border-radius:9px;background:var(--green);color:#fff;cursor:pointer;margin-top:8px" onclick="addUserRole()">💾 ${lang==="ja"?"追加":"Add"}</button>
     </div>
-    <p class="hint">${lang==="ja"?"ここで設定したロールが、データベース側で実際のアクセス制限に使われます。":"Roles set here are enforced at the database level."}</p>
+    <p style="font-size:11px;color:#94a3b8;margin:8px 0 0">ここで設定したロール・積み地がデータベース側で実際のアクセス制限に使われます。</p>
   </div>`+tabbar();
 }
 async function addUserRole(){
@@ -2527,19 +2538,23 @@ async function addUserRole(){
   const email=idPart?idPart+"@shinwa-active.co.jp":"";
   const role=document.getElementById("uRole").value;
   const note=document.getElementById("uNote").value.trim();
+  const oki_home=document.getElementById("uOki").value||null;
   if(!email){ toast(lang==="ja"?"メールIDを入力してください":"Enter email ID"); return; }
-  const {error}=await sb.from("user_roles").upsert({email,role,note,updated_at:new Date().toISOString()},{onConflict:"email"});
+  const {error}=await sb.from("user_roles").upsert({email,role,note,oki_home,updated_at:new Date().toISOString()},{onConflict:"email"});
   if(error){ toast(lang==="ja"?"保存に失敗しました":"Save failed"); return; }
-  await logActivity("update","user_roles",null,`${email} → ${role}`,null,{role});
+  await logActivity("update","user_roles",null,`${email} → ${role}${oki_home?" ("+oki_home+")":""}`,null,{role,oki_home});
   toast(lang==="ja"?"保存しました":"Saved");
   renderUserMgmt();
 }
-async function editUserRole(id,email,currentRole,currentNote){
+async function editUserRole(id,email,currentRole,currentNote,currentOki){
   const roleLabels={admin:"管理者",worker:"現場",view_only:"閲覧専用",dest_only:"納品先確認"};
   const newRole=prompt(lang==="ja"?`${email}\n現在: ${roleLabels[currentRole]||currentRole}\n\n新しいロールを入力（admin/worker/view_only/dest_only）`:`${email}\nCurrent: ${currentRole}\n\nEnter new role:`, currentRole);
   if(!newRole||!["admin","worker","view_only","dest_only"].includes(newRole.trim())){ toast(lang==="ja"?"無効なロールです":"Invalid role"); return; }
-  const newNote=prompt(lang==="ja"?"メモ（任意）":"Note (optional):", currentNote)||"";
-  await sb.from("user_roles").update({role:newRole.trim(),note:newNote,updated_at:new Date().toISOString()}).eq("id",id);
+  const newNote=prompt(lang==="ja"?"メモ（氏名・担当など）":"Note:", currentNote)||"";
+  const newOki=prompt(lang==="ja"?"積み地担当（DC2 5F / DC2 3F / アトム電器 / 空欄=なし）":"Home dock:", currentOki||"")||null;
+  const validOki=["DC2 5F","DC2 3F","アトム電器"];
+  const finalOki=(newOki&&validOki.includes(newOki.trim()))?newOki.trim():null;
+  await sb.from("user_roles").update({role:newRole.trim(),note:newNote,oki_home:finalOki,updated_at:new Date().toISOString()}).eq("id",id);
   await logActivity("update","user_roles",id,`${email} → ${newNote.trim()}`,{role:currentRole},{role:newRole.trim()});
   toast(lang==="ja"?"更新しました":"Updated");
   renderUserMgmt();
