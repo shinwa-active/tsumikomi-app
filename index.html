@@ -152,12 +152,13 @@ const T = {
 
 /* ---- 状態 ---- */
 let lang = localStorage.getItem("lang") || "ja";
-/* 文字・ボタンサイズ（small/medium/large/xlarge）。デフォルトは large（現状のサイズ） */
+/* 文字・ボタンサイズ（small/medium/large）。デフォルトは large（現状のサイズ） */
 let uiSize = localStorage.getItem("uiSize") || "large";
-const UI_SIZE_SCALE = { small:0.82, medium:0.91, large:1.0, xlarge:1.15 };
+const UI_SIZE_SCALE = { small:0.82, medium:0.91, large:1.0 };
+if(!UI_SIZE_SCALE[uiSize]) uiSize="large"; // 廃止した特大などはlargeに戻す
 const UI_SIZE_LABEL = {
-  ja:{ small:"小", medium:"中", large:"大", xlarge:"特大" },
-  en:{ small:"S", medium:"M", large:"L", xlarge:"XL" }
+  ja:{ small:"小", medium:"中", large:"大" },
+  en:{ small:"S", medium:"M", large:"L" }
 };
 function applyUiSize(){
   const scale = UI_SIZE_SCALE[uiSize] || 1.0;
@@ -838,29 +839,30 @@ function topbar(){
 function header(title,back){
   return `<div class="header">${back?`<button class="back" onclick="${back}">‹</button>`:""}<div class="title">${esc(title)}</div>
     <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
-      <button onclick="openSizePicker()" title="${lang==="ja"?"文字サイズ":"Text size"}" style="background:#fffbeb;border:2px solid #fbbf24;color:#92400e;border-radius:10px;min-width:42px;min-height:38px;font-size:15px;font-weight:800;padding:0 8px;line-height:1">🔠</button>
+      <button onclick="openSizePicker()" title="${lang==="ja"?"文字サイズ":"Text size"}" style="background:#fffbeb;border:2px solid #fbbf24;color:#92400e;border-radius:10px;min-width:46px;min-height:38px;padding:0 8px;line-height:1;display:inline-flex;align-items:baseline;justify-content:center;gap:1px"><span style="font-size:13px;font-weight:900">A</span><span style="font-size:20px;font-weight:900">A</span></button>
       <button onclick="go('manual')" title="${lang==="ja"?"取扱説明書":"Manual"}" style="position:relative;background:#fef2f2;border:2px solid #f87171;color:#991b1b;border-radius:10px;min-width:42px;min-height:38px;font-size:17px;font-weight:800;padding:0 8px;line-height:1">📖${manualHasNew()?`<span style="position:absolute;top:-5px;right:-5px;background:#dc2626;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;border:1.5px solid #fff">NEW</span>`:""}</button>
     </div></div>`;
 }
-/* 文字サイズ選択ダイアログ（小・中・大・特大） */
+/* 文字サイズ選択ダイアログ（小・中・大の3段階） */
 function openSizePicker(){
   const old=document.getElementById("sizePickerOverlay"); if(old) old.remove();
   const L=UI_SIZE_LABEL[lang]||UI_SIZE_LABEL.ja;
-  const order=["small","medium","large","xlarge"];
+  const order=["small","medium","large"];
   const ov=document.createElement("div");
   ov.id="sizePickerOverlay";
   ov.style.cssText="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px";
   ov.onclick=(e)=>{ if(e.target===ov) ov.remove(); };
   ov.innerHTML=`<div style="background:#fff;border-radius:18px;padding:20px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
-    <div style="font-weight:800;font-size:18px;color:#1e293b;margin-bottom:4px">🔠 ${lang==="ja"?"文字・ボタンのサイズ":"Text & button size"}</div>
+    <div style="font-weight:800;font-size:18px;color:#1e293b;margin-bottom:4px">🅰 ${lang==="ja"?"文字・ボタンのサイズ":"Text & button size"}</div>
     <div style="font-size:13px;color:#64748b;margin-bottom:14px">${lang==="ja"?"見やすい大きさを選んでください（この端末だけに保存されます）":"Pick a comfortable size (saved on this device only)"}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
       ${order.map(sz=>{
         const on=uiSize===sz;
         const note=sz==="large"?(lang==="ja"?"（標準）":"(default)"):"";
         return `<button onclick="setUiSize('${sz}');document.getElementById('sizePickerOverlay').remove()" style="padding:16px 8px;border-radius:14px;border:3px solid ${on?"#2563eb":"#e2e8f0"};background:${on?"#eff6ff":"#fff"};color:${on?"#1d4ed8":"#334155"};font-weight:800;cursor:pointer">
-          <div style="font-size:${sz==="small"?"15px":sz==="medium"?"18px":sz==="large"?"21px":"25px"}">${L[sz]}</div>
-          <div style="font-size:11px;font-weight:600;color:#94a3b8;margin-top:2px">${note}</div>
+          <div style="font-size:${sz==="small"?"15px":sz==="medium"?"19px":"24px"}">A</div>
+          <div style="font-size:13px;font-weight:800;margin-top:2px">${L[sz]}</div>
+          <div style="font-size:10px;font-weight:600;color:#94a3b8;margin-top:2px">${note}</div>
         </button>`;
       }).join("")}
     </div>
@@ -2916,239 +2918,349 @@ const MANUAL_UPDATED  = "2026-06-27"; // 最終更新日
 
 /* 更新履歴（新しいものを上に。verは導入時のMANUAL_VERSION） */
 const MANUAL_CHANGELOG = [
-  { ver:4, date:"2026-06-27", items:[
-    "ホームの「物量入力」で保存した数が、出荷量実績の集計に自動で反映されるようになりました。",
-    "画面右上に「文字サイズ調整（🔠）」ボタンを追加。小・中・大・特大の4段階で変えられます。",
-    "画面右上に「取扱説明書（📖）」ボタンを追加。いつでもこの説明書を開けます。"
-  ]},
-  { ver:3, date:"2026-06-20", items:[
-    "コメントの英語⇄日本語ワンタップ翻訳ボタンを追加。",
-    "休日モード（土日祝用）を追加。"
-  ]},
-  { ver:2, date:"2026-06-10", items:[
-    "コース記号の自動候補登録を追加（手入力したコードが次回から候補に出ます）。"
-  ]},
-  { ver:1, date:"2026-06-01", items:[
-    "横持ち管理システム 公開。"
-  ]}
+  { ver:4, date:"2026-06-27",
+    ja:[
+      "ホームの「物量入力」で保存した数が、出荷量実績の集計に自動で反映されるようになりました。",
+      "画面右上に「文字サイズ調整」ボタンを追加。小・中・大の3段階で変えられます。",
+      "画面右上に「取扱説明書」ボタンを追加。いつでもこの説明書を開けます。"
+    ],
+    en:[
+      "Volume entered in Home > Volume Input is now automatically reflected in the shipment totals.",
+      "Added a text-size button at the top right. You can switch between Small, Medium, and Large.",
+      "Added a Manual button at the top right. You can open this manual anytime."
+    ]},
+  { ver:3, date:"2026-06-20",
+    ja:[
+      "コメントの英語⇄日本語ワンタップ翻訳ボタンを追加。",
+      "休日モード（土日祝用）を追加。"
+    ],
+    en:[
+      "Added a one-tap English/Japanese translation button for comments.",
+      "Added Holiday Mode (for weekends and public holidays)."
+    ]},
+  { ver:2, date:"2026-06-10",
+    ja:[ "コース記号の自動候補登録を追加（手入力したコードが次回から候補に出ます）。" ],
+    en:[ "Course codes you type are now saved as suggestions for next time." ]},
+  { ver:1, date:"2026-06-01",
+    ja:[ "横持ち管理システム 公開。" ],
+    en:[ "Yokomochi Management System released." ]}
 ];
 
-/* マニュアル本文セクション。type:"cond"=条件つき動作 / "rule"=固定ルール
- * 図解は draw（CSSミニ画面のキー）で指定。img は将来スクショ差し込み用（今はnull）。 */
+/* マニュアル本文セクション（日英対応）。title/paras/list/note は {ja,en}。
+ * 図解は draw（CSSミニ画面のキー）。スクショは将来 <!-- screenshot:id --> に差し込み。 */
 function manualSections(){
-  // 各セクション：{ id, icon, title, body[], where(どこ), cond(いつ), result(どうなる), note }
-  return [
+  const L = lang==="en" ? "en" : "ja";
+  const pick = o => (o && typeof o==="object") ? (o[L]||o.ja) : o;
+  const raw = [
     {
-      id:"start", icon:"🚪", title:"はじめに（このアプリは何？）",
+      id:"start", icon:"🚪",
+      title:{ja:"はじめに（このアプリは何？）", en:"Getting Started (What is this app?)"},
       paras:[
-        "「横持ち（よこもち）」とは、倉庫の中で荷物をトラックに積んで別の場所へ運ぶ作業のことです。",
-        "このアプリは、誰が・いつ・どこへ・何パレット運んだかをスマホで記録し、全員でリアルタイムに共有するための道具です。",
-        "電波が切れても入力でき、つながり次第まとめて送られます。だから現場のどこにいても使えます。"
+        {ja:"「横持ち（よこもち）」とは、倉庫の中で荷物をトラックに積んで別の場所へ運ぶ作業のことです。",
+         en:"\"Yokomochi\" means moving goods inside the warehouse by loading them onto a truck and carrying them to another location."},
+        {ja:"このアプリは、誰が・いつ・どこへ・何パレット運んだかをスマホで記録し、全員でリアルタイムに共有するための道具です。",
+         en:"This app lets you record who moved what, when, where, and how many pallets—right from your phone—and shares it with everyone in real time."},
+        {ja:"電波が切れても入力でき、つながり次第まとめて送られます。だから現場のどこにいても使えます。",
+         en:"You can enter records even with no signal; they send automatically once you're back online. So it works anywhere on site."}
       ]
     },
     {
-      id:"login", icon:"🔑", title:"ログインのしかた",
+      id:"login", icon:"🔑",
+      title:{ja:"ログインのしかた", en:"How to Log In"},
       paras:[
-        "メールアドレスの「@より前」を入力し、パスワードを入れて「ログイン」を押します。",
-        "アルファベットは小文字だけです。大文字は入力できません。",
-        "60分間なにも操作しないと、安全のため自動でログアウトします。もう一度ログインすればOKです。"
+        {ja:"メールアドレスの「@より前」を入力し、パスワードを入れて「ログイン」を押します。",
+         en:"Enter the part of your email before the \"@\", type your password, and tap \"Log in\"."},
+        {ja:"アルファベットは小文字だけです。大文字は入力できません。",
+         en:"Letters are lowercase only—uppercase can't be entered."},
+        {ja:"60分間なにも操作しないと、安全のため自動でログアウトします。もう一度ログインすればOKです。",
+         en:"For safety, you're logged out automatically after 60 minutes of inactivity. Just log in again."}
       ]
     },
     {
-      id:"roles", icon:"👥", title:"アカウントの種類",
+      id:"roles", icon:"👥",
+      title:{ja:"アカウントの種類", en:"Account Types"},
       paras:[
-        "ログインするアカウントによって、できることが少し変わります。"
+        {ja:"ログインするアカウントによって、できることが少し変わります。",
+         en:"What you can do depends a little on which account you log in with."}
       ],
       list:[
-        "現場（worker）… 横持ちの登録・確認・物量入力ができます。ふだん使うのはこれです。",
-        "閲覧専用… 見るだけのアカウントです。登録や変更はできません。",
-        "納品先確認… 納品先での確認だけを行うアカウントです。"
+        {ja:"現場（worker）… 横持ちの登録・確認・物量入力ができます。ふだん使うのはこれです。",
+         en:"Worker — Can register and check yokomochi and enter volume. This is the one most people use."},
+        {ja:"閲覧専用… 見るだけのアカウントです。登録や変更はできません。",
+         en:"View-only — A view-only account. Cannot register or make changes."},
+        {ja:"納品先確認… 納品先での確認だけを行うアカウントです。",
+         en:"Delivery — An account for confirming at the delivery destination only."}
       ],
-      note:"自分のアカウントで操作できないボタンがある場合は、その立場では使えない機能です。"
+      note:{ja:"自分のアカウントで操作できないボタンがある場合は、その立場では使えない機能です。",
+            en:"If a button doesn't work on your account, that feature isn't available for your role."}
     },
     {
-      id:"home", icon:"🏠", title:"ホーム画面の見かた",
+      id:"home", icon:"🏠",
+      title:{ja:"ホーム画面の見かた", en:"The Home Screen"},
       draw:"home",
       paras:[
-        "ログインすると最初に出るのがホーム画面です。",
-        "黄色い大きな「📷 横持ち開始」ボタンを押すと、横持ちの登録を始められます。",
-        "緑の「パレット 残り合計」は、今まだ運び終えていないパレットの数です。",
-        "紫の「📊 物量入力」を押すと、荷主ごとの出荷量を入力できます（後で説明します）。",
-        "画面の下に「ホーム」「一覧」などのボタンがあり、押すと画面が切り替わります。"
+        {ja:"ログインすると最初に出るのがホーム画面です。",
+         en:"The Home screen is the first thing you see after logging in."},
+        {ja:"黄色い大きな「📷 横持ち開始」ボタンを押すと、横持ちの登録を始められます。",
+         en:"Tap the big yellow \"📷 Yokomochi Start\" button to begin registering a yokomochi."},
+        {ja:"緑の「パレット 残り合計」は、今まだ運び終えていないパレットの数です。",
+         en:"The green \"Pallets left\" shows how many pallets still haven't been delivered."},
+        {ja:"紫の「📊 物量入力」を押すと、荷主ごとの出荷量を入力できます（後で説明します）。",
+         en:"Tap the purple \"📊 Volume Input\" to enter shipment volume by shipper (explained later)."},
+        {ja:"画面の下に「ホーム」「一覧」などのボタンがあり、押すと画面が切り替わります。",
+         en:"At the bottom are buttons like \"Home\" and \"List\" to switch screens."}
       ]
     },
     {
-      id:"register", icon:"📷", title:"横持ちを登録する（写真撮影）",
+      id:"register", icon:"📷",
+      title:{ja:"横持ちを登録する（写真撮影）", en:"Registering a Yokomochi (Taking Photos)"},
       draw:"register",
       paras:[
-        "「横持ち開始」を押したら、次の順で入れていきます。",
+        {ja:"「横持ち開始」を押したら、次の順で入れていきます。",
+         en:"After tapping \"Yokomochi Start\", fill things in this order:"}
       ],
       list:[
-        "① 積み込んだあとの荷姿（にすがた）の写真を1〜3枚撮ります。",
-        "② 「積み地」「納品先」「トラック」を選びます。",
-        "③ この3つがそろうと、下の「コース看板」のロック（🔒）が外れて、コース記号を選べるようになります。",
-        "④ パレット数を入れ、必要ならコメントを書きます。",
-        "⑤ 「登録する」を押すと、全員に共有されます。"
+        {ja:"① 積み込んだあとの荷姿（にすがた）の写真を1〜3枚撮ります。",
+         en:"1. Take 1–3 photos of the load after it's stacked."},
+        {ja:"② 「積み地」「納品先」「トラック」を選びます。",
+         en:"2. Choose the Loading dock, Destination, and Truck."},
+        {ja:"③ この3つがそろうと、下の「コース看板」のロック（🔒）が外れて、コース記号を選べるようになります。",
+         en:"3. Once all three are set, the \"Course codes\" panel unlocks (🔒) and you can pick course codes."},
+        {ja:"④ パレット数を入れ、必要ならコメントを書きます。",
+         en:"4. Enter the number of pallets, and add a comment if needed."},
+        {ja:"⑤ 「登録する」を押すと、全員に共有されます。",
+         en:"5. Tap \"Save\" and it's shared with everyone."}
       ],
-      note:"3つ（積み地・納品先・トラック）のどれか1つでも空だと、コース看板は鍵がかかったまま選べません。"
+      note:{ja:"3つ（積み地・納品先・トラック）のどれか1つでも空だと、コース看板は鍵がかかったまま選べません。",
+            en:"If any of the three (Loading dock, Destination, Truck) is empty, the Course codes panel stays locked."}
     },
     {
-      id:"course", icon:"🪧", title:"コース看板（コース記号）のルール",
+      id:"course", icon:"🪧",
+      title:{ja:"コース看板（コース記号）のルール", en:"Course Code Rules"},
       paras:[
-        "コース記号は「どの便でどこへ運ぶか」を表す記号です。行き先のグループが決まっています。"
+        {ja:"コース記号は「どの便でどこへ運ぶか」を表す記号です。行き先のグループが決まっています。",
+         en:"A course code shows which run goes where. Each code belongs to a destination group."}
       ],
       list:[
-        "納品先で「DC1 4F」を選ぶと、DC1 4F行きのコースしか選べません。ほかはグレーになります。",
-        "別グループのコードを手で入力すると「これは○○行きです」と出てブロックされます。",
-        "その日「直積み」に変えられたコースは「本日、直積みに変更されています」と出て使えません。",
-        "赤・黄・青の色がついたコースは「第一優先（急ぎ）」の目印です。"
+        {ja:"納品先で「DC1 4F」を選ぶと、DC1 4F行きのコースしか選べません。ほかはグレーになります。",
+         en:"If you pick \"DC1 4F\" as the destination, only DC1 4F courses can be selected; the rest turn gray."},
+        {ja:"別グループのコードを手で入力すると「これは○○行きです」と出てブロックされます。",
+         en:"If you type a code from another group, it's blocked with a message like \"This is a ___ course.\""},
+        {ja:"その日「直積み」に変えられたコースは「本日、直積みに変更されています」と出て使えません。",
+         en:"A course switched to \"direct loading\" that day shows \"Changed to direct loading today\" and can't be used."},
+        {ja:"赤・黄・青の色がついたコースは「第一優先（急ぎ）」の目印です。",
+         en:"Red, yellow, and blue colored courses mark \"Priority (urgent)\" routes."}
       ],
-      note:"手で入力したコード記号は、登録が終わると自動で次回の候補ボタンになります。手動でマスタに足す必要はありません。"
+      note:{ja:"手で入力したコード記号は、登録が終わると自動で次回の候補ボタンになります。手動でマスタに足す必要はありません。",
+            en:"Codes you type by hand become suggestion buttons next time automatically—no need to add them manually."}
     },
     {
-      id:"firstpri", icon:"🔴", title:"第一優先（急ぎ）のきまり",
+      id:"firstpri", icon:"🔴",
+      title:{ja:"第一優先（急ぎ）のきまり", en:"Priority (Urgent) Rules"},
       paras:[
-        "進捗ボードで「第一優先（急ぎ）」に設定されたルートは、先に終わらせる決まりです。",
-        "第一優先がまだ終わっていないのに、通常コースだけで登録しようとすると「第一優先コースを含めてください」と出て登録できません。",
-        "土曜・日曜は、第一優先のセクションは表示されません（通常ルートだけになります）。"
+        {ja:"進捗ボードで「第一優先（急ぎ）」に設定されたルートは、先に終わらせる決まりです。",
+         en:"Routes marked \"Priority (urgent)\" on the progress board must be finished first."},
+        {ja:"第一優先がまだ終わっていないのに、通常コースだけで登録しようとすると「第一優先コースを含めてください」と出て登録できません。",
+         en:"If priority routes aren't done yet and you try to register with normal courses only, it says \"Please include a priority course\" and blocks you."},
+        {ja:"土曜・日曜は、第一優先のセクションは表示されません（通常ルートだけになります）。",
+         en:"On Saturdays and Sundays, the priority section is hidden (only normal routes show)."}
       ]
     },
     {
-      id:"oki", icon:"🏭", title:"自分の担当積み地のチェック",
+      id:"oki", icon:"🏭",
+      title:{ja:"自分の担当積み地のチェック", en:"Your Assigned Loading Dock Check"},
       paras:[
-        "人によって、ふだん作業する積み地（5F・3F・アトム電器など）が決まっています。",
-        "自分の担当とちがう積み地を選ぼうとすると「通常の作業場所と異なります。よろしいですか？」と確認が出ます。「はい」を押せば選べます。"
+        {ja:"人によって、ふだん作業する積み地（5F・3F・アトム電器など）が決まっています。",
+         en:"Each person has a usual loading dock (such as 5F, 3F, or Atom Denki)."},
+        {ja:"自分の担当とちがう積み地を選ぼうとすると「通常の作業場所と異なります。よろしいですか？」と確認が出ます。「はい」を押せば選べます。",
+         en:"If you pick a dock other than yours, a confirmation appears: \"This differs from your usual work area. Continue?\" Tap \"Yes\" to proceed."}
       ],
-      note:"休日モードがONのときは、この確認は出ません。"
+      note:{ja:"休日モードがONのときは、この確認は出ません。",
+            en:"When Holiday Mode is ON, this confirmation doesn't appear."}
     },
     {
-      id:"detail", icon:"📋", title:"横持ちの明細とチェック",
+      id:"detail", icon:"📋",
+      title:{ja:"横持ちの明細とチェック", en:"Yokomochi Details and Checking"},
       draw:"check",
       paras:[
-        "一覧から1件を開くと、明細（くわしい内容）が見られます。",
-        "「積込完了」を押す前は、コースの確認だけできます（誤タップ防止のためチェックボタンは出ません）。",
-        "「積込完了」を押すと、パレットの数だけ大きなチェックボタンが横に並びます。1PLなら1つ、3PLなら3つです。左から押すと1つずつチェックが増えます。",
-        "押しすぎたボタンをもう一度押すと、そこまで戻せます（例：3/3で2個目を押すと1/3に戻る）。",
-        "全部チェックし終えると、「納品先で確認（完了にする）」ボタンが押せるようになります。"
+        {ja:"一覧から1件を開くと、明細（くわしい内容）が見られます。",
+         en:"Open an item from the List to see its details."},
+        {ja:"「積込完了」を押す前は、コースの確認だけできます（誤タップ防止のためチェックボタンは出ません）。",
+         en:"Before tapping \"Loading complete\", you can only review courses (check buttons are hidden to prevent mis-taps)."},
+        {ja:"「積込完了」を押すと、パレットの数だけ大きなチェックボタンが横に並びます。1PLなら1つ、3PLなら3つです。左から押すと1つずつチェックが増えます。",
+         en:"After \"Loading complete\", large check buttons appear—one per pallet (1 for 1 PL, 3 for 3 PL). Tap from the left to add one check at a time."},
+        {ja:"押しすぎたボタンをもう一度押すと、そこまで戻せます（例：3/3で2個目を押すと1/3に戻る）。",
+         en:"Tap an already-checked button again to step back (e.g., at 3/3, tapping the 2nd goes back to 1/3)."},
+        {ja:"全部チェックし終えると、「納品先で確認（完了にする）」ボタンが押せるようになります。",
+         en:"Once all are checked, the \"Delivery confirmed\" button becomes tappable."}
       ]
     },
     {
-      id:"addmore", icon:"➕", title:"追加で登録する",
+      id:"addmore", icon:"➕",
+      title:{ja:"追加で登録する", en:"Adding to an Existing Record"},
       paras:[
-        "今日の登録に「未完了」のものがあると、横持ち登録の一番上に「追加で登録」が出ます。",
-        "そこから、同じトラックに荷物を追加できます。トラック名は自動で読み込まれるので、積み地を選ぶだけでコースが選べます。",
-        "ぜんぶ完了済みのときは「追加で登録」は出ません。"
+        {ja:"今日の登録に「未完了」のものがあると、横持ち登録の一番上に「追加で登録」が出ます。",
+         en:"If you have an unfinished record today, \"Add to record\" appears at the top of the registration screen."},
+        {ja:"そこから、同じトラックに荷物を追加できます。トラック名は自動で読み込まれるので、積み地を選ぶだけでコースが選べます。",
+         en:"From there you can add cargo to the same truck. The truck name loads automatically, so just pick the loading dock to choose courses."},
+        {ja:"ぜんぶ完了済みのときは「追加で登録」は出ません。",
+         en:"If everything is already complete, \"Add to record\" won't appear."}
       ]
     },
     {
-      id:"volume", icon:"📊", title:"物量入力（荷主ごとの出荷量）",
+      id:"volume", icon:"📊",
+      title:{ja:"物量入力（荷主ごとの出荷量）", en:"Volume Input (Shipment by Shipper)"},
       draw:"volume",
       paras:[
-        "ホームの「📊 物量入力」で、荷主ごと（シャーク・シロカ・ドリーム・パイオニア・アトム電器）の出荷量と出勤人数を入れて「保存する」を押します。",
-        "保存すると、その数は自動で集計に入ります。同じ数を別の場所にもう一度入力する必要はありません。",
-        "出勤人数を入れると、処理能力や負荷の目安が自動で計算されて表示されます。"
+        {ja:"ホームの「📊 物量入力」で、荷主ごと（シャーク・シロカ・ドリーム・パイオニア・アトム電器）の出荷量と出勤人数を入れて「保存する」を押します。",
+         en:"In Home > \"📊 Volume Input\", enter the shipment volume and attendance for each shipper (Shark, Siroca, Dream, Pioneer, Atom Denki), then tap \"Save\"."},
+        {ja:"保存すると、その数は自動で集計に入ります。同じ数を別の場所にもう一度入力する必要はありません。",
+         en:"Once saved, the numbers go into the totals automatically. There's no need to enter the same numbers anywhere else."},
+        {ja:"出勤人数を入れると、処理能力や負荷の目安が自動で計算されて表示されます。",
+         en:"When you enter attendance, an estimate of capacity and workload is calculated and shown automatically."}
       ],
-      note:"自動で集計に入るのは、保存した日からの分です。"
+      note:{ja:"自動で集計に入るのは、保存した日からの分です。",
+            en:"Auto-totaling applies from the day you save onward."}
     },
     {
-      id:"pallet", icon:"📦", title:"パレット残数",
+      id:"pallet", icon:"📦",
+      title:{ja:"パレット残数", en:"Pallets Left"},
       paras:[
-        "「＋／−」のボタンで、運び終えていないパレットの残り数を変えられます。変えると時刻が自動で記録されます。",
-        "翌日になると、残数は自動でゼロに戻ります。",
-        "リアルタイムで全員に共有されます。"
+        {ja:"「＋／−」のボタンで、運び終えていないパレットの残り数を変えられます。変えると時刻が自動で記録されます。",
+         en:"Use the \"+ / −\" buttons to change the number of pallets still left. The time is recorded automatically when you change it."},
+        {ja:"翌日になると、残数は自動でゼロに戻ります。",
+         en:"The count resets to zero automatically the next day."},
+        {ja:"リアルタイムで全員に共有されます。",
+         en:"It's shared with everyone in real time."}
       ]
     },
     {
-      id:"holiday", icon:"🏖", title:"休日モード（土日祝用）",
+      id:"holiday", icon:"🏖",
+      title:{ja:"休日モード（土日祝用）", en:"Holiday Mode (Weekends & Holidays)"},
       paras:[
-        "「🏖 休日モード」にチェックを入れると、土日祝などの特別な日のために、いくつかの制限が外れます。"
+        {ja:"「🏖 休日モード」にチェックを入れると、土日祝などの特別な日のために、いくつかの制限が外れます。",
+         en:"Turning on \"🏖 Holiday Mode\" lifts a few restrictions for special days like weekends and public holidays."}
       ],
       list:[
-        "第一優先が未完了でも、通常コースで登録できます。",
-        "どの納品先でも、全グループのコースが選べます。",
-        "担当外の積み地でも、確認ダイアログが出ません。"
+        {ja:"第一優先が未完了でも、通常コースで登録できます。",
+         en:"You can register with normal courses even if priority routes aren't done."},
+        {ja:"どの納品先でも、全グループのコースが選べます。",
+         en:"You can pick courses from any group, for any destination."},
+        {ja:"担当外の積み地でも、確認ダイアログが出ません。",
+         en:"No confirmation appears even for a dock outside your assignment."}
       ],
-      note:"このチェックは、ブラウザを閉じても残ります。平日に戻すときは外し忘れに注意してください。"
+      note:{ja:"このチェックは、ブラウザを閉じても残ります。平日に戻すときは外し忘れに注意してください。",
+            en:"This setting stays on even after you close the browser. Remember to turn it off when going back to weekdays."}
     },
     {
-      id:"translate", icon:"🌐", title:"コメントの翻訳・言語切替",
+      id:"translate", icon:"🌐",
+      title:{ja:"コメントの翻訳・言語切替", en:"Comment Translation & Language"},
       paras:[
-        "コメントがある画面で翻訳ボタンを押すと、日本語⇄英語に切り替わります。もう一度押すと元に戻ります（Google翻訳を使用）。",
-        "設定で、画面全体の言語を日本語／英語に切り替えられます。"
+        {ja:"コメントがある画面で翻訳ボタンを押すと、日本語⇄英語に切り替わります。もう一度押すと元に戻ります（Google翻訳を使用）。",
+         en:"On a screen with a comment, tap the translate button to switch between Japanese and English. Tap again to switch back (uses Google Translate)."},
+        {ja:"設定で、画面全体の言語を日本語／英語に切り替えられます。",
+         en:"In Settings, you can switch the whole app between Japanese and English."}
       ]
     },
     {
-      id:"size", icon:"🔠", title:"文字・ボタンのサイズ変更",
+      id:"size", icon:"🅰",
+      title:{ja:"文字・ボタンのサイズ変更", en:"Changing Text & Button Size"},
       paras:[
-        "画面の右上にある「🔠」ボタンを押すと、文字とボタンの大きさを「小・中・大・特大」の4段階で選べます。",
-        "標準は「大」です。見やすい大きさを選んでください。",
-        "選んだ大きさは、その端末（スマホ）だけに保存されます。ほかの人の画面は変わりません。"
+        {ja:"画面の右上にあるサイズボタン（小さいAと大きいA）を押すと、文字とボタンの大きさを「小・中・大」の3段階で選べます。",
+         en:"Tap the size button at the top right (a small A next to a large A) to choose text and button size: Small, Medium, or Large."},
+        {ja:"標準は「大」です。見やすい大きさを選んでください。",
+         en:"The default is Large. Pick whatever is easiest to read."},
+        {ja:"選んだ大きさは、その端末（スマホ）だけに保存されます。ほかの人の画面は変わりません。",
+         en:"Your choice is saved only on that device. It doesn't change anyone else's screen."}
       ]
     },
     {
-      id:"safety", icon:"✅", title:"安全のためのきまり（固定ルール）",
+      id:"safety", icon:"✅",
+      title:{ja:"安全のためのきまり（固定ルール）", en:"Safety Rules (Always Apply)"},
       list:[
-        "積み地・納品先・トラック・コース看板を全部入れないと登録できません。",
-        "DC3は、ほかの納品先といっしょに積み合わせできません。",
-        "写真は10MBまで。JPEG・PNG・WebP・HEIC以外は使えません。",
-        "「積込完了」を押さずに別の画面へ移ろうとすると、確認が出ます。",
-        "閲覧専用・納品先確認のアカウントは、書き込み操作ができません。"
+        {ja:"積み地・納品先・トラック・コース看板を全部入れないと登録できません。",
+         en:"You can't register until Loading dock, Destination, Truck, and Course codes are all filled in."},
+        {ja:"DC3は、ほかの納品先といっしょに積み合わせできません。",
+         en:"DC3 can't be combined with other destinations on the same load."},
+        {ja:"写真は10MBまで。JPEG・PNG・WebP・HEIC以外は使えません。",
+         en:"Photos are up to 10 MB. Only JPEG, PNG, WebP, and HEIC are allowed."},
+        {ja:"「積込完了」を押さずに別の画面へ移ろうとすると、確認が出ます。",
+         en:"If you try to leave without tapping \"Loading complete\", a confirmation appears."},
+        {ja:"閲覧専用・納品先確認のアカウントは、書き込み操作ができません。",
+         en:"View-only and Delivery accounts can't perform any write operations."}
       ]
     },
     {
-      id:"words", icon:"📚", title:"よく出てくる言葉",
+      id:"words", icon:"📚",
+      title:{ja:"よく出てくる言葉", en:"Common Terms"},
       list:[
-        "第一優先（急ぎ）… 先に終わらせる急ぎのルート。赤・黄・青のコースが対応。",
-        "直積み… 倉庫を通さず直接配送するコース。横持ちでは使えません。",
-        "ロール… アカウントの種類。現場／閲覧専用／納品先確認など。",
-        "休日モード… 土日祝用の特別モード。いくつかの制限が外れます。",
-        "PL（パレット）… 荷物を乗せる台。1PL＝台1枚分。"
+        {ja:"第一優先（急ぎ）… 先に終わらせる急ぎのルート。赤・黄・青のコースが対応。",
+         en:"Priority (urgent) — Urgent routes to finish first. Marked by red, yellow, and blue courses."},
+        {ja:"直積み… 倉庫を通さず直接配送するコース。横持ちでは使えません。",
+         en:"Direct loading — A course delivered directly without going through the warehouse. Can't be used for yokomochi."},
+        {ja:"ロール… アカウントの種類。現場／閲覧専用／納品先確認など。",
+         en:"Role — The account type, such as Worker, View-only, or Delivery."},
+        {ja:"休日モード… 土日祝用の特別モード。いくつかの制限が外れます。",
+         en:"Holiday Mode — A special mode for weekends and holidays that lifts some restrictions."},
+        {ja:"PL（パレット）… 荷物を乗せる台。1PL＝台1枚分。",
+         en:"PL (pallet) — The platform goods sit on. 1 PL = one pallet."}
       ]
     }
   ];
+  // {ja,en} を現在の言語に解決して返す
+  return raw.map(s=>({
+    id:s.id, icon:s.icon, draw:s.draw,
+    title: pick(s.title),
+    paras: (s.paras||[]).map(pick),
+    list:  s.list ? s.list.map(pick) : null,
+    note:  s.note ? pick(s.note) : null
+  }));
 }
 
-/* CSSで作るミニ画面の図解（スクショの代わり） */
+/* CSSで作るミニ画面の図解（スクショの代わり）。ラベルは言語対応。 */
 function manualDraw(key){
+  const ja=lang!=="en";
   const frame=(inner)=>`<div style="border:2px solid #cbd5e1;border-radius:12px;overflow:hidden;max-width:240px;margin:10px auto;background:#f1f5f9;box-shadow:0 2px 8px rgba(0,0,0,.08)">
-    <div style="background:#1e293b;color:#fff;font-size:10px;padding:5px 8px">あなたは <span style="background:#fbbf24;color:#1e293b;border-radius:999px;padding:1px 7px;font-weight:bold">作業者</span></div>
+    <div style="background:#1e293b;color:#fff;font-size:10px;padding:5px 8px">${ja?"あなたは":"You are"} <span style="background:#fbbf24;color:#1e293b;border-radius:999px;padding:1px 7px;font-weight:bold">${ja?"作業者":"Worker"}</span></div>
     ${inner}</div>`;
+  const sizeIcon=`<span style="border:1.5px solid #fbbf24;border-radius:5px;padding:0 4px;font-size:9px;font-weight:900">Aa</span>`;
+  const bookIcon=`<span style="border:1.5px solid #f87171;border-radius:5px;padding:0 3px;font-size:9px">📖</span>`;
   if(key==="home") return frame(`
-    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px;display:flex;align-items:center">横持ち記録
-      <span style="margin-left:auto;display:flex;gap:3px"><span style="border:1.5px solid #fbbf24;border-radius:5px;padding:0 3px;font-size:9px">🔠</span><span style="border:1.5px solid #f87171;border-radius:5px;padding:0 3px;font-size:9px">📖</span></span></div>
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px;display:flex;align-items:center">${ja?"横持ち記録":"Yokomochi Records"}
+      <span style="margin-left:auto;display:flex;gap:3px">${sizeIcon}${bookIcon}</span></div>
     <div style="padding:8px">
-      <div style="background:#fbbf24;border-radius:8px;text-align:center;padding:12px;font-weight:800;font-size:13px;color:#1e293b">📷 横持ち開始</div>
-      <div style="background:#0d9488;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📦 パレット 残り 0 PL</div>
-      <div style="background:#7c3aed;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📊 物量入力</div>
+      <div style="background:#fbbf24;border-radius:8px;text-align:center;padding:12px;font-weight:800;font-size:13px;color:#1e293b">📷 ${ja?"横持ち開始":"Yokomochi Start"}</div>
+      <div style="background:#0d9488;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📦 ${ja?"パレット 残り 0 PL":"Pallets left 0 PL"}</div>
+      <div style="background:#7c3aed;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📊 ${ja?"物量入力":"Volume Input"}</div>
     </div>`);
   if(key==="register") return frame(`
-    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">横持ちを登録</div>
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">${ja?"横持ちを登録":"New Yokomochi"}</div>
     <div style="padding:8px;font-size:10px;color:#334155">
-      <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;margin-bottom:5px">📷 写真を撮る</div>
+      <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;margin-bottom:5px">📷 ${ja?"写真を撮る":"Take photo"}</div>
       <div style="display:flex;gap:4px;margin-bottom:5px">
-        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">積み地 ✓</span>
-        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">納品先 ✓</span>
-        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">トラック ✓</span>
+        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">${ja?"積み地":"Dock"} ✓</span>
+        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">${ja?"納品先":"Dest."} ✓</span>
+        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">${ja?"トラック":"Truck"} ✓</span>
       </div>
-      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:6px;padding:6px">🔓 コース看板（選べます）</div>
+      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:6px;padding:6px">🔓 ${ja?"コース看板（選べます）":"Course codes (unlocked)"}</div>
     </div>`);
   if(key==="check") return frame(`
-    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">横持ちの明細</div>
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">${ja?"横持ちの明細":"Details"}</div>
     <div style="padding:8px;font-size:10px">
-      <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;margin-bottom:5px">✅ 積込完了 済み</div>
+      <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;margin-bottom:5px">✅ ${ja?"積込完了 済み":"Loading complete"}</div>
       <div style="display:flex;gap:4px">
         <span style="flex:1;background:#16a34a;color:#fff;border-radius:6px;text-align:center;padding:8px;font-weight:800">✓</span>
         <span style="flex:1;background:#16a34a;color:#fff;border-radius:6px;text-align:center;padding:8px;font-weight:800">✓</span>
         <span style="flex:1;background:#e2e8f0;color:#94a3b8;border-radius:6px;text-align:center;padding:8px;font-weight:800">3</span>
       </div>
-      <div style="text-align:center;color:#64748b;margin-top:4px;font-size:9px">2 / 3 チェック</div>
+      <div style="text-align:center;color:#64748b;margin-top:4px;font-size:9px">2 / 3 ${ja?"チェック":"checked"}</div>
     </div>`);
   if(key==="volume") return frame(`
-    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">物量入力</div>
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">${ja?"物量入力":"Volume Input"}</div>
     <div style="padding:8px;font-size:10px">
-      ${["シャーク","シロカ","ドリーム"].map(n=>`<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px"><span style="width:46px;font-weight:bold;color:#2563eb;font-size:9px">${n}</span><span style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:4px 6px;color:#94a3b8">120</span></div>`).join("")}
-      <div style="background:#059669;color:#fff;border-radius:6px;text-align:center;padding:7px;font-weight:800;margin-top:5px">💾 保存する</div>
-      <div style="text-align:center;color:#059669;font-size:9px;margin-top:4px">↓ 出荷量実績へ自動反映 ↓</div>
+      ${(ja?["シャーク","シロカ","ドリーム"]:["Shark","Siroca","Dream"]).map(n=>`<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px"><span style="width:46px;font-weight:bold;color:#2563eb;font-size:9px">${n}</span><span style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:4px 6px;color:#94a3b8">120</span></div>`).join("")}
+      <div style="background:#059669;color:#fff;border-radius:6px;text-align:center;padding:7px;font-weight:800;margin-top:5px">💾 ${ja?"保存する":"Save"}</div>
+      <div style="text-align:center;color:#059669;font-size:9px;margin-top:4px">${ja?"↓ 出荷量実績へ自動反映 ↓":"↓ Auto-added to totals ↓"}</div>
     </div>`);
   return "";
 }
@@ -3164,12 +3276,13 @@ function renderManual(){
   const secs=manualSections();
   // 新着（前回見たバージョンより新しい更新履歴）
   const newLogs=MANUAL_CHANGELOG.filter(c=>c.ver>seen);
+  const cl = lang==="en" ? "en" : "ja";
   const newBanner = newLogs.length ? `
     <div class="panel" style="background:#fffbeb;border:2px solid #fbbf24;margin-bottom:14px">
       <div style="font-weight:800;color:#92400e;font-size:16px;margin-bottom:6px">🆕 ${lang==="ja"?"新着のお知らせ":"What's new"}</div>
       ${newLogs.map(c=>`<div style="margin-bottom:8px">
         <div style="font-size:12px;color:#b45309;font-weight:700">v${c.ver}・${c.date}</div>
-        <ul style="margin:4px 0 0;padding-left:18px">${c.items.map(it=>`<li style="font-size:14px;color:#334155;margin-bottom:3px">${esc(it)}</li>`).join("")}</ul>
+        <ul style="margin:4px 0 0;padding-left:18px">${(c[cl]||c.ja).map(it=>`<li style="font-size:14px;color:#334155;margin-bottom:3px">${esc(it)}</li>`).join("")}</ul>
       </div>`).join("")}
       <button class="btn small" style="margin-top:4px;background:#f59e0b" onclick="manualMarkSeen();render()">${lang==="ja"?"確認しました":"Got it"}</button>
     </div>` : "";
@@ -3197,7 +3310,7 @@ function renderManual(){
 
   const footer=`<div style="text-align:center;color:#94a3b8;font-size:12px;margin:16px 0 8px">
     ${lang==="ja"?"取扱説明書":"Manual"} v${MANUAL_VERSION}（${MANUAL_UPDATED}）<br>
-    横持ち管理システム　株式会社シンワアクティブ 尼崎センター
+    ${lang==="ja"?"横持ち管理システム　株式会社シンワアクティブ 尼崎センター":"Yokomochi Management System — Shinwa Active Co., Ltd., Amagasaki Center"}
   </div>`;
 
   app.innerHTML=topbar()+header(lang==="ja"?"取扱説明書":"Manual",`go('${role==="worker"?"home":"dashboard"}')`)
