@@ -152,6 +152,27 @@ const T = {
 
 /* ---- 状態 ---- */
 let lang = localStorage.getItem("lang") || "ja";
+/* 文字・ボタンサイズ（small/medium/large/xlarge）。デフォルトは large（現状のサイズ） */
+let uiSize = localStorage.getItem("uiSize") || "large";
+const UI_SIZE_SCALE = { small:0.82, medium:0.91, large:1.0, xlarge:1.15 };
+const UI_SIZE_LABEL = {
+  ja:{ small:"小", medium:"中", large:"大", xlarge:"特大" },
+  en:{ small:"S", medium:"M", large:"L", xlarge:"XL" }
+};
+function applyUiSize(){
+  const scale = UI_SIZE_SCALE[uiSize] || 1.0;
+  // #app全体をzoomで一律拡縮（文字・ボタン・余白すべて同比率／レイアウト非破壊）
+  const appEl = document.getElementById("app");
+  if(appEl) appEl.style.zoom = scale;
+}
+function setUiSize(sz){
+  uiSize = sz; localStorage.setItem("uiSize", sz);
+  applyUiSize();
+  // 設定画面・サイズ選択を開いている場合は再描画して選択状態を反映
+  if(view.name==="settings") render();
+}
+
+
 let role = "worker";
 let adminAuthed = false;
 let isViewOnly = false;
@@ -503,9 +524,56 @@ async function volSave(){
   for(const row of rows){
     await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_support:row.today_support,today_absent:row.today_attend,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
   }
+  // ── 出荷量実績(route_records)へ日付つきで自動同期 ──
+  await syncVolToRoute(rows);
   toast(lang==="ja"?"物量を保存しました":"Saved");
   await loadVol();
   go("home");
+}
+
+/* 物量入力の本日値を、出荷量実績(route_records)へ日付つき1行で同期する。
+   荷主ラベル → 内部キー(shark等)を逆引きし、route_key="vol_sync" の当日行を upsert。
+   過去分は volume_shipment に履歴が無いため、ここで保存した日以降が日別・月別に反映される。 */
+async function syncVolToRoute(rows){
+  try{
+    const today=todayStr();
+    // 日本語ラベル → 内部キー の逆引き表（SHIPPER_LABELSの逆）
+    const labelToKey={};
+    Object.keys(SHIPPER_LABELS).forEach(k=>{ labelToKey[SHIPPER_LABELS[k]]=k; });
+    // 荷主ごとの本日値を集約（vol配列のlabelと突き合わせ）
+    const volByKey={shark:0,siroca:0,dream:0,pioneer:0,atom:0};
+    let matched=false;
+    rows.forEach(row=>{
+      const vrow=vol.find(x=>x.id===row.id);
+      if(!vrow) return;
+      const key=labelToKey[(vrow.label||"").trim()];
+      if(key && row.today_value!=null){ volByKey[key]+=row.today_value; matched=true; }
+    });
+    if(!matched) return; // 5荷主に一致する入力が無ければ同期しない
+    // 当日の vol_sync 行が既にあるか確認（自分の作成分）
+    const {data:existing}=await sb.from("route_records")
+      .select("id").eq("record_date",today).eq("route_key","vol_sync").limit(1);
+    const payload={
+      record_date: today,
+      route_key: "vol_sync",
+      route_label: "物量入力(自動)",
+      seq: 0,
+      vol_shark: volByKey.shark,
+      vol_siroca: volByKey.siroca,
+      vol_dream: volByKey.dream,
+      vol_pioneer: volByKey.pioneer,
+      vol_atom: volByKey.atom,
+      no_problem: false,
+      note: "物量入力画面から自動連携",
+      created_by: user?.email||null,
+      updated_at: new Date().toISOString()
+    };
+    if(existing&&existing.length){
+      await sb.from("route_records").update(payload).eq("id",existing[0].id);
+    }else{
+      await sb.from("route_records").insert(payload);
+    }
+  }catch(e){ /* 同期失敗は物量保存本体を止めない */ }
 }
 
 function renderDirectLoad(){
@@ -644,6 +712,7 @@ function openPhoto(i){
 /* ===================== 認証 ===================== */
 async function start(){
   ensureCourseDefaults();
+  applyUiSize();
   app.innerHTML = `<div class="center"><div>${t().loading}</div></div>`;
   const {data}=await sb.auth.getSession();
   if(data&&data.session){ user=data.session.user; await afterLogin(); }
@@ -768,7 +837,36 @@ function topbar(){
 }
 function header(title,back){
   return `<div class="header">${back?`<button class="back" onclick="${back}">‹</button>`:""}<div class="title">${esc(title)}</div>
-    <div style="margin-left:auto;color:#94a3b8;font-size:12px">📶 ${t().worksOffline}</div></div>`;
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <button onclick="openSizePicker()" title="${lang==="ja"?"文字サイズ":"Text size"}" style="background:#fffbeb;border:2px solid #fbbf24;color:#92400e;border-radius:10px;min-width:42px;min-height:38px;font-size:15px;font-weight:800;padding:0 8px;line-height:1">🔠</button>
+      <button onclick="go('manual')" title="${lang==="ja"?"取扱説明書":"Manual"}" style="position:relative;background:#fef2f2;border:2px solid #f87171;color:#991b1b;border-radius:10px;min-width:42px;min-height:38px;font-size:17px;font-weight:800;padding:0 8px;line-height:1">📖${manualHasNew()?`<span style="position:absolute;top:-5px;right:-5px;background:#dc2626;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;border:1.5px solid #fff">NEW</span>`:""}</button>
+    </div></div>`;
+}
+/* 文字サイズ選択ダイアログ（小・中・大・特大） */
+function openSizePicker(){
+  const old=document.getElementById("sizePickerOverlay"); if(old) old.remove();
+  const L=UI_SIZE_LABEL[lang]||UI_SIZE_LABEL.ja;
+  const order=["small","medium","large","xlarge"];
+  const ov=document.createElement("div");
+  ov.id="sizePickerOverlay";
+  ov.style.cssText="position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px";
+  ov.onclick=(e)=>{ if(e.target===ov) ov.remove(); };
+  ov.innerHTML=`<div style="background:#fff;border-radius:18px;padding:20px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">
+    <div style="font-weight:800;font-size:18px;color:#1e293b;margin-bottom:4px">🔠 ${lang==="ja"?"文字・ボタンのサイズ":"Text & button size"}</div>
+    <div style="font-size:13px;color:#64748b;margin-bottom:14px">${lang==="ja"?"見やすい大きさを選んでください（この端末だけに保存されます）":"Pick a comfortable size (saved on this device only)"}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      ${order.map(sz=>{
+        const on=uiSize===sz;
+        const note=sz==="large"?(lang==="ja"?"（標準）":"(default)"):"";
+        return `<button onclick="setUiSize('${sz}');document.getElementById('sizePickerOverlay').remove()" style="padding:16px 8px;border-radius:14px;border:3px solid ${on?"#2563eb":"#e2e8f0"};background:${on?"#eff6ff":"#fff"};color:${on?"#1d4ed8":"#334155"};font-weight:800;cursor:pointer">
+          <div style="font-size:${sz==="small"?"15px":sz==="medium"?"18px":sz==="large"?"21px":"25px"}">${L[sz]}</div>
+          <div style="font-size:11px;font-weight:600;color:#94a3b8;margin-top:2px">${note}</div>
+        </button>`;
+      }).join("")}
+    </div>
+    <button onclick="document.getElementById('sizePickerOverlay').remove()" style="width:100%;margin-top:14px;padding:12px;border-radius:12px;border:none;background:#f1f5f9;color:#475569;font-weight:700;cursor:pointer">${lang==="ja"?"閉じる":"Close"}</button>
+  </div>`;
+  document.body.appendChild(ov);
 }
 function tabbar(){
   const tabs = role==="worker"
@@ -948,6 +1046,7 @@ async function render(){
   else if(view.name==="history"){ renderHistory(); return; }
   else if(view.name==="master"){ renderMaster(); return; }
   else if(view.name==="settings"){ renderSettings(); return; }
+  else if(view.name==="manual"){ renderManual(); return; }
 }
 
 /* ---------- 登録 ---------- */
@@ -1981,10 +2080,11 @@ async function deleteRouteRecord(id){
 }
 
 function routeExportCsv(){
-  const head=["日付","便","人数","シャーク","シロカ","ドリーム","パイオニア","アトム電器","合計","問題なし","備考"];
+  const head=["日付","種別","便","人数","シャーク","シロカ","ドリーム","パイオニア","アトム電器","合計","問題なし","備考"];
+  const kindLabel=r=> r.route_key==="vol_sync" ? "物量入力(自動)" : "便ごと手入力";
   const rows=routeData.map(r=>{
     const total=SHIPPERS.reduce((s,k)=>s+(r[`vol_${k}`]||0),0);
-    return [r.record_date,r.seq,r.workers||"",r.vol_shark||0,r.vol_siroca||0,r.vol_dream||0,r.vol_pioneer||0,r.vol_atom||0,total,r.no_problem?"○":"",r.note||""];
+    return [r.record_date,kindLabel(r),r.seq,r.workers||"",r.vol_shark||0,r.vol_siroca||0,r.vol_dream||0,r.vol_pioneer||0,r.vol_atom||0,total,r.no_problem?"○":"",r.note||""];
   });
   const body=[head,...rows].map(l=>l.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob=new Blob(["\uFEFF"+body],{type:"text/csv"});
@@ -2152,14 +2252,22 @@ async function renderRouteRecords(){
   }
   const rangeData=await loadRouteRecordsRange(rangeFrom, rangeTo);
 
+  // 物量入力(自動)＝主集計、便ごと手入力(daily)＝補助。二重カウントを避けるため主集計はvol_syncのみ。
+  const rangeMain=rangeData.filter(r=>r.route_key==="vol_sync");
+  const rangeManual=rangeData.filter(r=>r.route_key==="daily");
+  // 物量入力(自動)が無い日は、その日の便入力(daily)で補完する（過去の手入力分も活きるように）
+  const daysWithSync=new Set(rangeMain.map(r=>r.record_date));
+  const rangeManualFill=rangeManual.filter(r=>!daysWithSync.has(r.record_date));
+  const rangeAgg=[...rangeMain, ...rangeManualFill];
+
   // 荷主別合計
   const shipperTotals={};
-  SHIPPERS.forEach(k=>{ shipperTotals[k]=rangeData.reduce((s,r)=>s+(r[`vol_${k}`]||0),0); });
+  SHIPPERS.forEach(k=>{ shipperTotals[k]=rangeAgg.reduce((s,r)=>s+(r[`vol_${k}`]||0),0); });
   const totalVol=Object.values(shipperTotals).reduce((s,v)=>s+v,0);
 
   // 日別推移
   const byDay={};
-  rangeData.forEach(r=>{
+  rangeAgg.forEach(r=>{
     if(!byDay[r.record_date]) byDay[r.record_date]={date:r.record_date,total:0};
     byDay[r.record_date].total+=SHIPPERS.reduce((s,k)=>s+(r[`vol_${k}`]||0),0);
   });
@@ -2170,6 +2278,20 @@ async function renderRouteRecords(){
 
   // 今日の既存記録
   const todayRecs=routeData.filter(r=>r.route_key==="daily");
+  // 今日の物量入力(自動)同期行
+  const todaySync=routeData.find(r=>r.route_key==="vol_sync");
+  const syncCard=todaySync?(()=>{
+    const total=SHIPPERS.reduce((s,k)=>s+(todaySync[`vol_${k}`]||0),0);
+    const vols=SHIPPERS.map(k=>`<span style="color:${SHIPPER_COLORS[k]};font-weight:bold">${SHIPPER_LABELS[k]}:${todaySync[`vol_${k}`]||0}</span>`).join(" ");
+    return `<div style="background:#eff6ff;border:2px solid #93c5fd;border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="background:#2563eb;color:#fff;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:bold">📊 ${lang==="ja"?"物量入力(自動)":"Volume (auto)"}</span>
+        <span style="margin-left:auto;font-size:15px;font-weight:bold;color:#1d4ed8">${lang==="ja"?"計 ":"Total "}${total}</span>
+      </div>
+      <div style="font-size:13px;flex-wrap:wrap;display:flex;gap:6px">${vols}</div>
+      <div style="color:#64748b;font-size:11px;margin-top:4px">${lang==="ja"?"ホームの「物量入力」で保存した値が自動で集計に反映されます":"Values saved in Home > Volume input are auto-aggregated"}</div>
+    </div>`;
+  })():"";
   const todayList=todayRecs.map(r=>{
     const total=SHIPPERS.reduce((s,k)=>s+(r[`vol_${k}`]||0),0);
     const vols=SHIPPERS.filter(k=>r[`vol_${k}`]>0).map(k=>`<span style="color:${SHIPPER_COLORS[k]};font-weight:bold">${SHIPPER_LABELS[k]}:${r[`vol_${k}`]}</span>`).join(" ");
@@ -2241,6 +2363,8 @@ async function renderRouteRecords(){
     </div>`}
 
     <div style="font-weight:bold;font-size:15px;color:#1e3a5f;margin:12px 0 8px">📝 ${lang==="ja"?"入力（今日："+todayStrFn()+"）":"Input (Today: "+todayStrFn()+")"}</div>
+    ${syncCard}
+    ${todayList?`<div style="font-size:12px;color:#64748b;margin:4px 0 6px">${lang==="ja"?"▼ 便ごとの手入力（補助・上の自動集計とは別枠）":"▼ Manual per-run entry (supplementary)"}</div>`:""}
     ${todayList}
 
     <div class="panel" style="margin-top:8px">
@@ -2783,9 +2907,309 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
-/* ---------- 設定 ---------- */
-/* ---------- ENボタン：コメント翻訳 ---------- */
-let _commentOriginal=null;
+/* ===================== 取扱説明書（マニュアル） ===================== *
+ * MANUAL_VERSION を上げ、MANUAL_CHANGELOG に項目を足すと「新着」案内が自動で出ます。
+ * 各セクションに screenshot を後から差し込めるよう img プロパティを用意（今は未使用）。
+ * ================================================================== */
+const MANUAL_VERSION = 4;            // 機能変更のたびに +1
+const MANUAL_UPDATED  = "2026-06-27"; // 最終更新日
+
+/* 更新履歴（新しいものを上に。verは導入時のMANUAL_VERSION） */
+const MANUAL_CHANGELOG = [
+  { ver:4, date:"2026-06-27", items:[
+    "ホームの「物量入力」で保存した数が、出荷量実績の集計に自動で反映されるようになりました。",
+    "画面右上に「文字サイズ調整（🔠）」ボタンを追加。小・中・大・特大の4段階で変えられます。",
+    "画面右上に「取扱説明書（📖）」ボタンを追加。いつでもこの説明書を開けます。"
+  ]},
+  { ver:3, date:"2026-06-20", items:[
+    "コメントの英語⇄日本語ワンタップ翻訳ボタンを追加。",
+    "休日モード（土日祝用）を追加。"
+  ]},
+  { ver:2, date:"2026-06-10", items:[
+    "コース記号の自動候補登録を追加（手入力したコードが次回から候補に出ます）。"
+  ]},
+  { ver:1, date:"2026-06-01", items:[
+    "横持ち管理システム 公開。"
+  ]}
+];
+
+/* マニュアル本文セクション。type:"cond"=条件つき動作 / "rule"=固定ルール
+ * 図解は draw（CSSミニ画面のキー）で指定。img は将来スクショ差し込み用（今はnull）。 */
+function manualSections(){
+  // 各セクション：{ id, icon, title, body[], where(どこ), cond(いつ), result(どうなる), note }
+  return [
+    {
+      id:"start", icon:"🚪", title:"はじめに（このアプリは何？）",
+      paras:[
+        "「横持ち（よこもち）」とは、倉庫の中で荷物をトラックに積んで別の場所へ運ぶ作業のことです。",
+        "このアプリは、誰が・いつ・どこへ・何パレット運んだかをスマホで記録し、全員でリアルタイムに共有するための道具です。",
+        "電波が切れても入力でき、つながり次第まとめて送られます。だから現場のどこにいても使えます。"
+      ]
+    },
+    {
+      id:"login", icon:"🔑", title:"ログインのしかた",
+      paras:[
+        "メールアドレスの「@より前」を入力し、パスワードを入れて「ログイン」を押します。",
+        "アルファベットは小文字だけです。大文字は入力できません。",
+        "60分間なにも操作しないと、安全のため自動でログアウトします。もう一度ログインすればOKです。"
+      ]
+    },
+    {
+      id:"roles", icon:"👥", title:"アカウントの種類",
+      paras:[
+        "ログインするアカウントによって、できることが少し変わります。"
+      ],
+      list:[
+        "現場（worker）… 横持ちの登録・確認・物量入力ができます。ふだん使うのはこれです。",
+        "閲覧専用… 見るだけのアカウントです。登録や変更はできません。",
+        "納品先確認… 納品先での確認だけを行うアカウントです。"
+      ],
+      note:"自分のアカウントで操作できないボタンがある場合は、その立場では使えない機能です。"
+    },
+    {
+      id:"home", icon:"🏠", title:"ホーム画面の見かた",
+      draw:"home",
+      paras:[
+        "ログインすると最初に出るのがホーム画面です。",
+        "黄色い大きな「📷 横持ち開始」ボタンを押すと、横持ちの登録を始められます。",
+        "緑の「パレット 残り合計」は、今まだ運び終えていないパレットの数です。",
+        "紫の「📊 物量入力」を押すと、荷主ごとの出荷量を入力できます（後で説明します）。",
+        "画面の下に「ホーム」「一覧」などのボタンがあり、押すと画面が切り替わります。"
+      ]
+    },
+    {
+      id:"register", icon:"📷", title:"横持ちを登録する（写真撮影）",
+      draw:"register",
+      paras:[
+        "「横持ち開始」を押したら、次の順で入れていきます。",
+      ],
+      list:[
+        "① 積み込んだあとの荷姿（にすがた）の写真を1〜3枚撮ります。",
+        "② 「積み地」「納品先」「トラック」を選びます。",
+        "③ この3つがそろうと、下の「コース看板」のロック（🔒）が外れて、コース記号を選べるようになります。",
+        "④ パレット数を入れ、必要ならコメントを書きます。",
+        "⑤ 「登録する」を押すと、全員に共有されます。"
+      ],
+      note:"3つ（積み地・納品先・トラック）のどれか1つでも空だと、コース看板は鍵がかかったまま選べません。"
+    },
+    {
+      id:"course", icon:"🪧", title:"コース看板（コース記号）のルール",
+      paras:[
+        "コース記号は「どの便でどこへ運ぶか」を表す記号です。行き先のグループが決まっています。"
+      ],
+      list:[
+        "納品先で「DC1 4F」を選ぶと、DC1 4F行きのコースしか選べません。ほかはグレーになります。",
+        "別グループのコードを手で入力すると「これは○○行きです」と出てブロックされます。",
+        "その日「直積み」に変えられたコースは「本日、直積みに変更されています」と出て使えません。",
+        "赤・黄・青の色がついたコースは「第一優先（急ぎ）」の目印です。"
+      ],
+      note:"手で入力したコード記号は、登録が終わると自動で次回の候補ボタンになります。手動でマスタに足す必要はありません。"
+    },
+    {
+      id:"firstpri", icon:"🔴", title:"第一優先（急ぎ）のきまり",
+      paras:[
+        "進捗ボードで「第一優先（急ぎ）」に設定されたルートは、先に終わらせる決まりです。",
+        "第一優先がまだ終わっていないのに、通常コースだけで登録しようとすると「第一優先コースを含めてください」と出て登録できません。",
+        "土曜・日曜は、第一優先のセクションは表示されません（通常ルートだけになります）。"
+      ]
+    },
+    {
+      id:"oki", icon:"🏭", title:"自分の担当積み地のチェック",
+      paras:[
+        "人によって、ふだん作業する積み地（5F・3F・アトム電器など）が決まっています。",
+        "自分の担当とちがう積み地を選ぼうとすると「通常の作業場所と異なります。よろしいですか？」と確認が出ます。「はい」を押せば選べます。"
+      ],
+      note:"休日モードがONのときは、この確認は出ません。"
+    },
+    {
+      id:"detail", icon:"📋", title:"横持ちの明細とチェック",
+      draw:"check",
+      paras:[
+        "一覧から1件を開くと、明細（くわしい内容）が見られます。",
+        "「積込完了」を押す前は、コースの確認だけできます（誤タップ防止のためチェックボタンは出ません）。",
+        "「積込完了」を押すと、パレットの数だけ大きなチェックボタンが横に並びます。1PLなら1つ、3PLなら3つです。左から押すと1つずつチェックが増えます。",
+        "押しすぎたボタンをもう一度押すと、そこまで戻せます（例：3/3で2個目を押すと1/3に戻る）。",
+        "全部チェックし終えると、「納品先で確認（完了にする）」ボタンが押せるようになります。"
+      ]
+    },
+    {
+      id:"addmore", icon:"➕", title:"追加で登録する",
+      paras:[
+        "今日の登録に「未完了」のものがあると、横持ち登録の一番上に「追加で登録」が出ます。",
+        "そこから、同じトラックに荷物を追加できます。トラック名は自動で読み込まれるので、積み地を選ぶだけでコースが選べます。",
+        "ぜんぶ完了済みのときは「追加で登録」は出ません。"
+      ]
+    },
+    {
+      id:"volume", icon:"📊", title:"物量入力（荷主ごとの出荷量）",
+      draw:"volume",
+      paras:[
+        "ホームの「📊 物量入力」で、荷主ごと（シャーク・シロカ・ドリーム・パイオニア・アトム電器）の出荷量と出勤人数を入れて「保存する」を押します。",
+        "保存すると、その数は自動で集計に入ります。同じ数を別の場所にもう一度入力する必要はありません。",
+        "出勤人数を入れると、処理能力や負荷の目安が自動で計算されて表示されます。"
+      ],
+      note:"自動で集計に入るのは、保存した日からの分です。"
+    },
+    {
+      id:"pallet", icon:"📦", title:"パレット残数",
+      paras:[
+        "「＋／−」のボタンで、運び終えていないパレットの残り数を変えられます。変えると時刻が自動で記録されます。",
+        "翌日になると、残数は自動でゼロに戻ります。",
+        "リアルタイムで全員に共有されます。"
+      ]
+    },
+    {
+      id:"holiday", icon:"🏖", title:"休日モード（土日祝用）",
+      paras:[
+        "「🏖 休日モード」にチェックを入れると、土日祝などの特別な日のために、いくつかの制限が外れます。"
+      ],
+      list:[
+        "第一優先が未完了でも、通常コースで登録できます。",
+        "どの納品先でも、全グループのコースが選べます。",
+        "担当外の積み地でも、確認ダイアログが出ません。"
+      ],
+      note:"このチェックは、ブラウザを閉じても残ります。平日に戻すときは外し忘れに注意してください。"
+    },
+    {
+      id:"translate", icon:"🌐", title:"コメントの翻訳・言語切替",
+      paras:[
+        "コメントがある画面で翻訳ボタンを押すと、日本語⇄英語に切り替わります。もう一度押すと元に戻ります（Google翻訳を使用）。",
+        "設定で、画面全体の言語を日本語／英語に切り替えられます。"
+      ]
+    },
+    {
+      id:"size", icon:"🔠", title:"文字・ボタンのサイズ変更",
+      paras:[
+        "画面の右上にある「🔠」ボタンを押すと、文字とボタンの大きさを「小・中・大・特大」の4段階で選べます。",
+        "標準は「大」です。見やすい大きさを選んでください。",
+        "選んだ大きさは、その端末（スマホ）だけに保存されます。ほかの人の画面は変わりません。"
+      ]
+    },
+    {
+      id:"safety", icon:"✅", title:"安全のためのきまり（固定ルール）",
+      list:[
+        "積み地・納品先・トラック・コース看板を全部入れないと登録できません。",
+        "DC3は、ほかの納品先といっしょに積み合わせできません。",
+        "写真は10MBまで。JPEG・PNG・WebP・HEIC以外は使えません。",
+        "「積込完了」を押さずに別の画面へ移ろうとすると、確認が出ます。",
+        "閲覧専用・納品先確認のアカウントは、書き込み操作ができません。"
+      ]
+    },
+    {
+      id:"words", icon:"📚", title:"よく出てくる言葉",
+      list:[
+        "第一優先（急ぎ）… 先に終わらせる急ぎのルート。赤・黄・青のコースが対応。",
+        "直積み… 倉庫を通さず直接配送するコース。横持ちでは使えません。",
+        "ロール… アカウントの種類。現場／閲覧専用／納品先確認など。",
+        "休日モード… 土日祝用の特別モード。いくつかの制限が外れます。",
+        "PL（パレット）… 荷物を乗せる台。1PL＝台1枚分。"
+      ]
+    }
+  ];
+}
+
+/* CSSで作るミニ画面の図解（スクショの代わり） */
+function manualDraw(key){
+  const frame=(inner)=>`<div style="border:2px solid #cbd5e1;border-radius:12px;overflow:hidden;max-width:240px;margin:10px auto;background:#f1f5f9;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+    <div style="background:#1e293b;color:#fff;font-size:10px;padding:5px 8px">あなたは <span style="background:#fbbf24;color:#1e293b;border-radius:999px;padding:1px 7px;font-weight:bold">作業者</span></div>
+    ${inner}</div>`;
+  if(key==="home") return frame(`
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px;display:flex;align-items:center">横持ち記録
+      <span style="margin-left:auto;display:flex;gap:3px"><span style="border:1.5px solid #fbbf24;border-radius:5px;padding:0 3px;font-size:9px">🔠</span><span style="border:1.5px solid #f87171;border-radius:5px;padding:0 3px;font-size:9px">📖</span></span></div>
+    <div style="padding:8px">
+      <div style="background:#fbbf24;border-radius:8px;text-align:center;padding:12px;font-weight:800;font-size:13px;color:#1e293b">📷 横持ち開始</div>
+      <div style="background:#0d9488;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📦 パレット 残り 0 PL</div>
+      <div style="background:#7c3aed;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📊 物量入力</div>
+    </div>`);
+  if(key==="register") return frame(`
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">横持ちを登録</div>
+    <div style="padding:8px;font-size:10px;color:#334155">
+      <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;margin-bottom:5px">📷 写真を撮る</div>
+      <div style="display:flex;gap:4px;margin-bottom:5px">
+        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">積み地 ✓</span>
+        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">納品先 ✓</span>
+        <span style="background:#2563eb;color:#fff;border-radius:999px;padding:3px 8px;font-size:9px">トラック ✓</span>
+      </div>
+      <div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:6px;padding:6px">🔓 コース看板（選べます）</div>
+    </div>`);
+  if(key==="check") return frame(`
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">横持ちの明細</div>
+    <div style="padding:8px;font-size:10px">
+      <div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:6px;padding:6px;margin-bottom:5px">✅ 積込完了 済み</div>
+      <div style="display:flex;gap:4px">
+        <span style="flex:1;background:#16a34a;color:#fff;border-radius:6px;text-align:center;padding:8px;font-weight:800">✓</span>
+        <span style="flex:1;background:#16a34a;color:#fff;border-radius:6px;text-align:center;padding:8px;font-weight:800">✓</span>
+        <span style="flex:1;background:#e2e8f0;color:#94a3b8;border-radius:6px;text-align:center;padding:8px;font-weight:800">3</span>
+      </div>
+      <div style="text-align:center;color:#64748b;margin-top:4px;font-size:9px">2 / 3 チェック</div>
+    </div>`);
+  if(key==="volume") return frame(`
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">物量入力</div>
+    <div style="padding:8px;font-size:10px">
+      ${["シャーク","シロカ","ドリーム"].map(n=>`<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px"><span style="width:46px;font-weight:bold;color:#2563eb;font-size:9px">${n}</span><span style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:4px 6px;color:#94a3b8">120</span></div>`).join("")}
+      <div style="background:#059669;color:#fff;border-radius:6px;text-align:center;padding:7px;font-weight:800;margin-top:5px">💾 保存する</div>
+      <div style="text-align:center;color:#059669;font-size:9px;margin-top:4px">↓ 出荷量実績へ自動反映 ↓</div>
+    </div>`);
+  return "";
+}
+
+function manualLastSeen(){ return parseInt(localStorage.getItem("manualSeenVer")||"0"); }
+function manualMarkSeen(){ localStorage.setItem("manualSeenVer", String(MANUAL_VERSION)); }
+/* ホーム等で「新着あり」を判定（赤バッジ用） */
+function manualHasNew(){ return manualLastSeen() < MANUAL_VERSION; }
+
+function renderManual(){
+  const seen=manualLastSeen();
+  const isNewChange=(ver)=> ver>seen;
+  const secs=manualSections();
+  // 新着（前回見たバージョンより新しい更新履歴）
+  const newLogs=MANUAL_CHANGELOG.filter(c=>c.ver>seen);
+  const newBanner = newLogs.length ? `
+    <div class="panel" style="background:#fffbeb;border:2px solid #fbbf24;margin-bottom:14px">
+      <div style="font-weight:800;color:#92400e;font-size:16px;margin-bottom:6px">🆕 ${lang==="ja"?"新着のお知らせ":"What's new"}</div>
+      ${newLogs.map(c=>`<div style="margin-bottom:8px">
+        <div style="font-size:12px;color:#b45309;font-weight:700">v${c.ver}・${c.date}</div>
+        <ul style="margin:4px 0 0;padding-left:18px">${c.items.map(it=>`<li style="font-size:14px;color:#334155;margin-bottom:3px">${esc(it)}</li>`).join("")}</ul>
+      </div>`).join("")}
+      <button class="btn small" style="margin-top:4px;background:#f59e0b" onclick="manualMarkSeen();render()">${lang==="ja"?"確認しました":"Got it"}</button>
+    </div>` : "";
+
+  // 目次
+  const toc=`<div class="panel" style="margin-bottom:14px">
+    <div style="font-weight:800;font-size:15px;color:#1e3a5f;margin-bottom:8px">📑 ${lang==="ja"?"もくじ":"Contents"}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${secs.map(s=>`<a href="#man_${s.id}" style="text-decoration:none"><span style="display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:6px 12px;font-size:13px;color:#334155">${s.icon} ${esc(s.title)}</span></a>`).join("")}
+    </div>
+  </div>`;
+
+  const body=secs.map(s=>{
+    const paras=(s.paras||[]).map(p=>`<p style="font-size:15px;line-height:1.7;color:#334155;margin:8px 0">${esc(p)}</p>`).join("");
+    const list=(s.list)?`<ul style="margin:8px 0;padding-left:20px">${s.list.map(it=>`<li style="font-size:15px;line-height:1.6;color:#334155;margin-bottom:6px">${esc(it)}</li>`).join("")}</ul>`:"";
+    const draw=s.draw?manualDraw(s.draw):"";
+    const note=s.note?`<div style="background:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;padding:10px 12px;margin-top:8px;font-size:14px;color:#1e40af">💡 ${esc(s.note)}</div>`:"";
+    // 画像差し込み口（将来スクショを入れる場所）
+    const imgSlot=`<!-- screenshot:${s.id} -->`;
+    return `<div id="man_${s.id}" class="panel" style="margin-bottom:12px;scroll-margin-top:70px">
+      <div style="font-weight:800;font-size:18px;color:#1e293b;margin-bottom:4px">${s.icon} ${esc(s.title)}</div>
+      ${paras}${list}${draw}${imgSlot}${note}
+    </div>`;
+  }).join("");
+
+  const footer=`<div style="text-align:center;color:#94a3b8;font-size:12px;margin:16px 0 8px">
+    ${lang==="ja"?"取扱説明書":"Manual"} v${MANUAL_VERSION}（${MANUAL_UPDATED}）<br>
+    横持ち管理システム　株式会社シンワアクティブ 尼崎センター
+  </div>`;
+
+  app.innerHTML=topbar()+header(lang==="ja"?"取扱説明書":"Manual",`go('${role==="worker"?"home":"dashboard"}')`)
+    +`<div class="pad" style="padding-bottom:90px">
+      <div class="panel" style="background:#1e293b;color:#fff;border:none;margin-bottom:14px">
+        <div style="font-size:20px;font-weight:800;margin-bottom:4px">📖 ${lang==="ja"?"はじめての人もこれだけ読めば使えます":"Everything you need to get started"}</div>
+        <div style="font-size:13px;color:#cbd5e1">${lang==="ja"?"上から順に読めば、教えてもらわなくても操作できるようになっています。":"Read top to bottom—no training needed."}</div>
+      </div>
+      ${newBanner}${toc}${body}${footer}
+    </div>`+tabbar();
+}
+
 async function topbarTranslate(){
   const btn=document.getElementById("topbarTransBtn");
   const detailEl=document.getElementById("detailComment");
@@ -2838,6 +3262,8 @@ Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addC
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
+window.setUiSize=setUiSize; window.openSizePicker=openSizePicker; window.applyUiSize=applyUiSize;
+window.renderManual=renderManual; window.manualMarkSeen=manualMarkSeen;
 
 start();
 </script>
