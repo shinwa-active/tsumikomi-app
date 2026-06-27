@@ -1532,6 +1532,25 @@ function addCourseG(key){
     const msg=lang==="ja"?`${c} は ${locs} で本日「直積み」に変更されています。\n\nそれでも追加しますか？`:`${c} is set to direct loading at ${locs} today.\n\nAdd anyway?`;
     if(!confirm(msg)) return;
   }
+  // 手入力コードが別グループのマスタに属していないか確認
+  if(!isHoliday){
+    const allowedGrps=allowedCourseGrps();
+    if(allowedGrps){
+      const inDc1_4f=getMaster("course_dc1_4f").includes(c)||getMaster("course_dc1").includes(c);
+      const inDc1_1f=getMaster("course_dc1_1f").includes(c)||getMaster("course_dc1").includes(c);
+      const inDc3=getMaster("course_dc3").includes(c);
+      if(inDc1_4f||inDc1_1f||inDc3){
+        const ok=(inDc1_4f&&allowedGrps.dc1_4f)||(inDc1_1f&&allowedGrps.dc1_1f)||(inDc3&&allowedGrps.dc3);
+        if(!ok){
+          const dest=inDc3?"DC3":(inDc1_4f?"DC1 4F":"DC1 1F");
+          const msg2=lang==="ja"
+            ?`⚠ 注意\n\n「${c}」は ${dest} 行きのコースです。\n今回の納品先と行き先が違います。\n\nそれでも追加しますか？`
+            :`⚠ Warning\n\n"${c}" is a ${dest} course.\nThis doesn't match your current destination.\n\nAdd anyway?`;
+          if(!confirm(msg2)) return;
+        }
+      }
+    }
+  }
   if(mix && mix.key===key){
     mix.picks.push(c); ci.value=""; if(pi) pi.value=""; drawCandidates(); return;
   }
@@ -3157,8 +3176,8 @@ function manualSections(){
       id:"pallet", icon:"📦",
       title:{ja:"パレット残数の入力タイミングと使い方", en:"When and How to Enter Pallets Left"},
       paras:[
-        {ja:"パレット残数は、各フロアで「出荷・荷揃い・検品がすべて終わり、横持ちできる状態になった」タイミングで入力します。",
-         en:"Enter the pallet count when all shipping, picking, and inspection on your floor are done and the pallets are ready for yokomochi."},
+        {ja:"パレット残数は、各フロアで「出荷・荷揃検品がすべて終わり、横持ちできる状態になった」タイミングで入力します。",
+         en:"Enter the pallet count when all shipping and picking/inspection on your floor are done and the pallets are ready for yokomochi."},
         {ja:"フロアごとの目安はこのとおりです。5F（DC2 5Fフロア）、3F（DC2 3F ABフロア）、アトム電器フロアの3か所それぞれで入力します。",
          en:"There are 3 areas: 5F (DC2 5F floor), 3F (DC2 3F AB floor), and Atom Denki floor. Each area enters their own count."},
         {ja:"看板の色で行き先を判断します。黄色の看板はDC3行き、白色の看板はDC1行きです。パレットのサイズは関係ありません。",
