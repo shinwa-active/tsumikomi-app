@@ -183,8 +183,8 @@ let previewRole = null;
 // 休日モード：ONのとき第一優先・コースグループ・積み地担当の制約を全解除
 let isHoliday = localStorage.getItem("isHoliday") === "1";
 
-/* ── 日本祝日テーブル（内閣府公表、2025〜2027年） ──────────────────
- * 振替休日・国民の休日を含む確定値。2028年以降は随時更新が必要。      */
+/* JP_HOLIDAYS: Japan national holidays 2025-2027 (Cabinet Office).
+ * Includes substitute holidays. Update needed for 2028+. */
 const JP_HOLIDAYS = new Set([
   /* 2025 */
   "2025-01-01","2025-01-13","2025-02-11","2025-02-23","2025-02-24",
@@ -310,6 +310,103 @@ function esc(s){ return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;
 function maskName(s){ s=String(s||""); if(!s) return s; if(/^U\d{6}/i.test(s)) return s; const head=s.slice(0,3); return head+"………"; }
 function viewOnlyBlock(){ toast(isDestOnly?(lang==="ja"?"このアカウントでは操作できません":"This account cannot operate this"):(lang==="ja"?"閲覧専用のため操作できません":"View-only: cannot operate")); return true; }
 function toast(msg){ const d=document.createElement("div"); d.className="toast"; d.innerHTML=`<div class="in">${esc(msg)}</div>`; app.appendChild(d); setTimeout(()=>d.remove(),2400); }
+
+/* =====================================================================
+ * オフライン入力キュー（IndexedDB）
+ * 圏外でも「保存ボタン」が機能し、復帰時に自動送信する。
+ * DB: offlineQueue テーブル / store: records（保存待ちの登録データ）
+ * ===================================================================*/
+const OQ = (() => {
+  let db = null;
+  const DB_NAME = "tsumikomi_offline", STORE = "records", VER = 1;
+  function open(){
+    return new Promise((res, rej) => {
+      if(db){ res(db); return; }
+      const req = indexedDB.open(DB_NAME, VER);
+      req.onupgradeneeded = e => e.target.result.createObjectStore(STORE, {keyPath:"qid", autoIncrement:true});
+      req.onsuccess = e => { db = e.target.result; res(db); };
+      req.onerror   = e => rej(e.target.error);
+    });
+  }
+  async function enqueue(payload){
+    const d = await open();
+    return new Promise((res, rej) => {
+      const tx = d.transaction(STORE, "readwrite");
+      const r  = tx.objectStore(STORE).add({...payload, _queuedAt: new Date().toISOString()});
+      r.onsuccess = () => res(r.result);
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  async function getAll(){
+    const d = await open();
+    return new Promise((res, rej) => {
+      const tx = d.transaction(STORE, "readonly");
+      const r  = tx.objectStore(STORE).getAll();
+      r.onsuccess = () => res(r.result);
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  async function remove(qid){
+    const d = await open();
+    return new Promise((res, rej) => {
+      const tx = d.transaction(STORE, "readwrite");
+      const r  = tx.objectStore(STORE).delete(qid);
+      r.onsuccess = () => res();
+      r.onerror   = e => rej(e.target.error);
+    });
+  }
+  return { enqueue, getAll, remove };
+})();
+
+/* オフラインキューの件数をバナーに表示 */
+async function updateOfflineBanner(){
+  const items = await OQ.getAll().catch(()=>[]);
+  let banner = document.getElementById("offlineBanner");
+  if(!banner){
+    banner = document.createElement("div");
+    banner.id = "offlineBanner";
+    banner.style.cssText = "position:fixed;bottom:60px;left:0;right:0;z-index:120;display:flex;justify-content:center;pointer-events:none";
+    document.body.appendChild(banner);
+  }
+  if(!navigator.onLine || items.length){
+    const cnt   = items.length;
+    const online = navigator.onLine;
+    const bg     = online ? "#0d9488" : "#92400e";
+    const txt    = online
+      ? ("📡 " + cnt + (lang==="ja" ? "件の未送信データを送信中…" : " record(s) sending…"))
+      : ("📵 " + (lang==="ja" ? "オフライン" : "Offline") + (cnt ? ("  " + (lang==="ja" ? "未送信 " : "Unsent ") + cnt + (lang==="ja" ? "件" : "")) : ""));
+    banner.innerHTML = '<div style="background:' + bg + ';color:#fff;border-radius:999px;padding:6px 18px;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.25);pointer-events:auto">' + txt + '</div>';
+  } else {
+    banner.innerHTML = "";
+  }
+}
+
+/* 復帰時に自動送信 */
+window.addEventListener("online", async () => {
+  await updateOfflineBanner();
+  await flushOfflineQueue();
+});
+window.addEventListener("offline", () => updateOfflineBanner());
+
+async function flushOfflineQueue(){
+  if(!user) return;
+  const items = await OQ.getAll().catch(()=>[]);
+  for(const item of items){
+    try{
+      const { qid, _queuedAt, ...payload } = item;
+      const ins = await sb.from("load_records").insert(payload).select().single();
+      if(ins.error) throw ins.error;
+      await OQ.remove(qid);
+    }catch(e){ /* 1件失敗しても続ける */ }
+  }
+  await updateOfflineBanner();
+  if((await OQ.getAll().catch(()=>[])).length === 0 && navigator.onLine){
+    const items2 = await OQ.getAll().catch(()=>[]);
+    if(items2.length === 0){ await loadRecords(); }
+  }
+}
+/* -- オフラインキューここまで -- */
+
 
 /* ---- マスタ（クラウド共有） ---- */
 const MCOLORS=[
@@ -470,7 +567,7 @@ const HKANA_DAKUTEN={
 const SYM_HALF_TO_FULL={
   "+":"＋","&":"＆","%":"％","-":"－","!":"！","#":"＃","*":"＊",":":"：","/":"／",">":"＞",
   "\"":"”","$":"＄","@":"＠","<":"＜","=":"＝","(":"（",")":"）","~":"～","^":"＾","_":"＿",
-  ".":"．",",":"，",";":"；","'":"’","`":"｀","[":"［","]":"］","{":"｛","}":"｝","|":"｜","?":"？"
+  ".":"．",",":"，",";":"；","'":"’","\u0060":"｀","[":"［","]":"］","{":"｛","}":"｝","|":"｜","?":"？"
 };
 function normalizeCourseCode(s){
   let v=String(s||"").trim();
@@ -584,9 +681,9 @@ async function volSave(){
   for(const row of rows){
     await sb.from("volume_shipment").update({today_value:row.today_value,today_ok:row.today_ok,today_support:row.today_support,today_absent:row.today_attend,today_absent_date:todayStr(),updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",row.id);
   }
-  // ── 出荷量実績(route_records)へ日付つきで自動同期 ──
+  // -- 出荷量実績(route_records)へ日付つきで自動同期 --
   await syncVolToRoute(rows);
-  // ── 物量実績を volume_history へ日付つきで保存（予測機能の下準備） ──
+  // -- 物量実績を volume_history へ日付つきで保存（予測機能の下準備） --
   await saveVolumeHistory(rows);
   toast(lang==="ja"?"物量を保存しました":"Saved");
   await loadVol();
@@ -852,6 +949,9 @@ async function afterLogin(){
     .on("postgres_changes",{event:"*",schema:"public",table:"master_items"},loadMaster)
     .on("postgres_changes",{event:"*",schema:"public",table:"volume_shipment"},loadVol)
     .on("postgres_changes",{event:"*",schema:"public",table:"direct_load_courses"},loadDirectLoad).subscribe();
+  // ログイン時にオフラインキューを送信
+  await updateOfflineBanner();
+  if(navigator.onLine) await flushOfflineQueue();
 }
 async function logout(){ if(user) await logActivity("logout","auth",user.id,"手動ログアウト",null,null); if(idleTimer){ clearTimeout(idleTimer); idleTimer=null; } await sb.auth.signOut(); user=null; adminAuthed=false; role="worker"; isViewOnly=false; isDestOnly=false; isAdminAllowed=false; pendingCompleteId=null; renderLogin(); }
 
@@ -1288,18 +1388,19 @@ let mix=null; // {key, picks:[]}
 function drawCandidates(){
   const area=document.getElementById("candArea"); if(!area) return;
 
-  // 積み地・納品先・トラックが揃うまでコースエリアをロック
+  // 積み地・納品先・トラックが揃うまでコースエリアをロック（順序は問わない）
   const truckEl=document.getElementById("truck");
   const truckVal=truckEl?truckEl.value.trim():"";
   const missing=[];
-  if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading location");
+  if(!regOki.length) missing.push(lang==="ja"?"積み地":"Loading dock");
   if(!regDests.length) missing.push(lang==="ja"?"納品先":"Destination");
   if(!truckVal) missing.push(lang==="ja"?"トラック":"Truck");
   if(missing.length){
     area.innerHTML=`<div style="background:#f8fafc;border:2px dashed #cbd5e1;border-radius:12px;padding:16px;text-align:center;color:#64748b">
       <div style="font-size:18px;margin-bottom:6px">🔒</div>
-      <div style="font-weight:bold;font-size:14px;margin-bottom:4px">${lang==="ja"?"先に以下を選択してください":"Please select the following first"}</div>
-      <div style="font-size:13px">${missing.map(m=>`• ${m}`).join("　")}</div>
+      <div style="font-weight:bold;font-size:14px;margin-bottom:4px">${lang==="ja"?"あと以下を選ぶとコースを選べます":"Select the following to unlock courses"}</div>
+      <div style="font-size:13px;color:#2563eb">${missing.map(m=>`• ${m}`).join("　")}</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:6px">${lang==="ja"?"順番はどれからでもOKです":"You can select them in any order"}</div>
     </div>`;
     return;
   }
@@ -1416,9 +1517,35 @@ function pickTruck(v){
   inp.value = (inp.value===v) ? "" : v;
   drawTruck(); drawCandidates(); updateAnom();
 }
+/* 写真を長辺1280px・JPEG品質70%に自動圧縮して Blob を返す */
+function compressPhoto(file){
+  return new Promise(resolve=>{
+    const MAX_SIDE=1280, QUALITY=0.70;
+    const reader=new FileReader();
+    reader.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width, h=img.height;
+        if(w>MAX_SIDE||h>MAX_SIDE){
+          if(w>=h){ h=Math.round(h*MAX_SIDE/w); w=MAX_SIDE; }
+          else     { w=Math.round(w*MAX_SIDE/h); h=MAX_SIDE; }
+        }
+        const cv=document.createElement("canvas");
+        cv.width=w; cv.height=h;
+        cv.getContext("2d").drawImage(img,0,0,w,h);
+        cv.toBlob(blob=>{
+          // 圧縮後の方が大きい場合(小サイズ写真)は元ファイルをそのまま使う
+          resolve(blob && blob.size<file.size ? new File([blob],file.name,{type:"image/jpeg"}) : file);
+        },"image/jpeg",QUALITY);
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 function onFiles(e){
   if(isViewOnly||isDestOnly){ viewOnlyBlock(); e.target.value=""; return; }
-  const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+  const MAX_BYTES = 10 * 1024 * 1024;
   const ALLOWED_TYPES = ['image/jpeg','image/png','image/webp','image/heic','image/heif'];
   const candidates = [...e.target.files];
   const valid = [];
@@ -1434,9 +1561,12 @@ function onFiles(e){
     valid.push(f);
   }
   const take = valid.slice(0, 3 - regPhotos.length);
-  take.forEach(f=>regPhotos.push(f));
-  e.target.value="";
-  drawPhotos(); updateAnom();
+  // 圧縮してから追加
+  Promise.all(take.map(compressPhoto)).then(compressed=>{
+    compressed.forEach(f=>regPhotos.push(f));
+    e.target.value="";
+    drawPhotos(); updateAnom();
+  });
 }
 function drawPhotos(){
   const a=document.getElementById("photoArea");
@@ -1831,8 +1961,13 @@ async function saveRecord(){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const req=anomRequired();
   if(req.length){
-    toast(lang==="ja"?"必須項目が未入力です":"Required fields missing");
+    // エラーを画面内の#anomエリアに表示してスクロール（消えない）
     updateAnom();
+    const anomEl=document.getElementById("anom");
+    if(anomEl) anomEl.scrollIntoView({behavior:"smooth",block:"center"});
+    // 揺らして注目させる
+    if(anomEl){ anomEl.style.transition="transform .08s"; anomEl.style.transform="translateX(-6px)";
+      setTimeout(()=>{ anomEl.style.transform="translateX(6px)"; setTimeout(()=>{ anomEl.style.transform=""; },80); },80); }
     return;
   }
   // 第一優先チェック（安全弁）
@@ -1870,11 +2005,30 @@ async function saveRecord(){
     if(a.length) await sb.from("anomaly_logs").insert(a.map(m=>({record_id:rec.id,type:"input",message:m})));
     await sb.from("notifications").insert({record_id:rec.id,message:`${dest||"-"} / ${truck||"-"} 登録`});
     await logActivity("insert","load_records",rec.id,`${dest||"-"} / ${truck||"-"}`,null,{destination:dest,truck:truck,pallets:pallets});
-    toast(t().saved);
+    flashSuccess(lang==="ja"?"登録しました":"Saved!");
     await loadRecords();
     pendingCompleteId=rec.id;
     go("detail",{id:rec.id});
-  }catch(e){ alert((lang==="ja"?"登録できませんでした：":"Save failed: ")+(e.message||e)); btn.disabled=false; btn.textContent=t().save; }
+  }catch(e){
+    // 圏外・通信エラー時はオフラインキューへ退避
+    if(!navigator.onLine || (e.message||"").includes("fetch") || (e.message||"").includes("network")){
+      const wname=(user.email||"").split("@")[0]||t().you;
+      const dest=regDests.join("、"), truck=document.getElementById("truck")?.value.trim()||"";
+      const pallets=regCourses.reduce((s,c)=>s+(c.pl||0),0), comment=document.getElementById("comment")?.value.trim()||"";
+      await OQ.enqueue({
+        worker_name:wname, worker_id:user.id, destination:dest, truck:truck,
+        pallets:pallets, comment:comment, oki_chi:regOki.join("、"),
+        photo_taken_at:new Date().toISOString(), device_info:navigator.userAgent.slice(0,120),
+        _offlineSaved:true
+      });
+      await updateOfflineBanner();
+      toast(lang==="ja"?"オフライン：復帰後に自動送信されます":"Offline: will auto-send when back online");
+      btn.disabled=false; btn.textContent=t().save;
+      return;
+    }
+    alert((lang==="ja"?"登録できませんでした：":"Save failed: ")+(e.message||e));
+    btn.disabled=false; btn.textContent=t().save;
+  }
 }
 
 /* ---------- 詳細 ---------- */
@@ -1943,6 +2097,22 @@ async function renderDetail(id){
     ${courseBox}${actions}${adminRow}
   </div>`;
 }
+/* Undo用：操作直後に5秒間「取り消す」バナーを表示 */
+function showUndoBanner(msg, onUndo){
+  const old=document.getElementById("undoBanner"); if(old) old.remove();
+  const d=document.createElement("div");
+  d.id="undoBanner";
+  d.style.cssText="position:fixed;bottom:68px;left:0;right:0;z-index:130;display:flex;justify-content:center;padding:0 16px";
+  d.innerHTML=`<div style="background:#1e293b;color:#fff;border-radius:14px;padding:10px 18px;display:flex;align-items:center;gap:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);width:100%;max-width:400px">
+    <span style="flex:1;font-size:14px">${esc(msg)}</span>
+    <button id="undoBtn" style="background:#f59e0b;color:#1e293b;border:none;border-radius:8px;padding:6px 14px;font-weight:800;font-size:14px;cursor:pointer">${lang==="ja"?"取り消す":"Undo"}</button>
+  </div>`;
+  document.body.appendChild(d);
+  const btn=d.querySelector("#undoBtn");
+  let done=false;
+  const timer=setTimeout(()=>{ if(!done){ d.remove(); } }, 15000);
+  btn.onclick=()=>{ done=true; clearTimeout(timer); d.remove(); onUndo(); };
+}
 async function markComplete(id){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   if(String(pendingCompleteId)===String(id)) pendingCompleteId=null;
@@ -1960,9 +2130,14 @@ async function markComplete(id){
       if(row) await palAdjust(row.id,-rec.pl_dc3); else warns.push(okiFirst+"→DC3");
     }
   }
-  toast(lang==="ja"?"積込完了にしました":"Marked loaded");
   if(warns.length) toast((lang==="ja"?"パレット残数の対象が見つかりません：":"Pallet route not found: ")+warns.join("、"));
   await loadRecords();
+  // Undo：5秒以内に取り消し可能
+  showUndoBanner(lang==="ja"?"積込完了にしました　→":"Marked loaded　→", async()=>{
+    await sb.from("load_records").update({completed:false,completed_at:null}).eq("id",id);
+    await loadRecords(); renderDetail(id);
+    toast(lang==="ja"?"取り消しました":"Undone");
+  });
   if(role==="worker") go("home"); else renderDetail(id);
 }
 // PLチェック数取得（checked_atに数値文字列で記録、checked=trueは全PL済み）
@@ -2015,7 +2190,18 @@ async function toggleCourse(cid,rid,cur){
   const curCnt=course?getCnt(course):0;
   await tapCoursePl(cid,rid,curCnt>=pl?0:curCnt,pl);
 }
-async function confirmDest(id,allChecked){ if(isViewOnly) return viewOnlyBlock(); if(!allChecked){ toast(t().checkAll); return; } if(!confirm(t().destQ))return; await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id); toast(lang==="ja"?"納品先完了にしました":"Received"); await loadRecords(); renderDetail(id); }
+async function confirmDest(id,allChecked){
+  if(isViewOnly) return viewOnlyBlock();
+  if(!allChecked){ toast(t().checkAll); return; }
+  if(!confirm(t().destQ)) return;
+  await sb.from("load_records").update({dest_confirmed:true,dest_confirmed_at:new Date().toISOString()}).eq("id",id);
+  await loadRecords(); renderDetail(id);
+  showUndoBanner(lang==="ja"?"納品先完了にしました　→":"Received　→", async()=>{
+    await sb.from("load_records").update({dest_confirmed:false,dest_confirmed_at:null}).eq("id",id);
+    await loadRecords(); renderDetail(id);
+    toast(lang==="ja"?"取り消しました":"Undone");
+  });
+}
 async function delRecord(id){ if(isViewOnly||isDestOnly) return viewOnlyBlock(); if(!confirm(t().delQ))return; const rec=records.find(x=>String(x.id)===String(id)); const summary=rec?`${rec.dest||"-"} / ${rec.truck||"-"}`:""; await sb.from("load_records").update({deleted_at:new Date().toISOString(),deleted_by:(user&&user.email)?user.email:null}).eq("id",id); await logActivity("delete","load_records",id,summary,rec?{dest:rec.dest,truck:rec.truck,created_at:rec.created_at}:null,null); await loadRecords(); go(role==="worker"?"list":"search"); }
 async function restoreRecord(id){ if(!isAdminAllowed) return; if(!confirm(lang==="ja"?"この記録を復元しますか？":"Restore this record?"))return; await sb.from("load_records").update({deleted_at:null,deleted_by:null}).eq("id",id); await logActivity("restore","load_records",id,"記録を復元",null,null); await loadRecords(); renderHistory(); toast(lang==="ja"?"復元しました":"Restored"); }
 
@@ -2058,6 +2244,30 @@ function svgBar(data, labelKey, valKey, color, height, opts={}){
       ${d[valKey]>0?`<text x="${x+barW/2}" y="${y-3}" text-anchor="middle" font-size="10" fill="#1e3a5f" font-weight="bold">${d[valKey]}</text>`:""}`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible">${bars}</svg>`;
+}
+/* 時間帯グラフ専用：バーを固定幅で並べ、コンテナを横スクロールにする */
+function svgBarScroll(data, labelKey, valKey, color, height){
+  if(!data.length) return `<p class="hint">${lang==="ja"?"データなし":"No data"}</p>`;
+  const H=height||140, BAR_W=28, BAR_GAP=8, PAD_L=28, PAD_R=12;
+  const max=Math.max(...data.map(d=>d[valKey]),1);
+  const totalW=PAD_L + data.length*(BAR_W+BAR_GAP) + PAD_R;
+  const bars=data.map((d,i)=>{
+    const bh=Math.max(2,Math.round((d[valKey]/max)*(H-40)));
+    const x=PAD_L+i*(BAR_W+BAR_GAP);
+    const y=H-22-bh;
+    const lbl=String(d[labelKey]);
+    return `<rect x="${x}" y="${y}" width="${BAR_W}" height="${bh}" rx="4" fill="${color}" opacity="${d[valKey]?0.85:0.15}"/>
+      <text x="${x+BAR_W/2}" y="${H-6}" text-anchor="middle" font-size="10" fill="#64748b">${esc(lbl)}</text>
+      ${d[valKey]>0?`<text x="${x+BAR_W/2}" y="${y-4}" text-anchor="middle" font-size="11" fill="#1e3a5f" font-weight="bold">${d[valKey]}</text>`:""}`;
+  }).join("");
+  // 最大値ライン
+  const gridY=H-22-Math.round(0.75*(H-40));
+  const gridLine=`<line x1="${PAD_L}" y1="${gridY}" x2="${totalW-PAD_R}" y2="${gridY}" stroke="#e2e8f0" stroke-dasharray="4,3" stroke-width="1"/>`;
+  return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px">
+    <svg width="${totalW}" height="${H}" style="display:block;min-width:100%">
+      ${gridLine}${bars}
+    </svg>
+  </div>`;
 }
 function svgLine(data, labelKey, valKey, color){
   if(data.length<2) return `<p class="hint">${lang==="ja"?"データが2日以上必要です":"Need 2+ days of data"}</p>`;
@@ -2532,7 +2742,7 @@ function renderDashboard(){
   const recs=dashRecords();
   const periodLabel={today:lang==="ja"?"今日":"Today",week:lang==="ja"?"今週":"This week","7days":lang==="ja"?"直近7日":"Last 7 days",custom:lang==="ja"?"期間指定":"Custom"}[dashPeriod]||"";
 
-  // ── KPIカード ──
+  // -- KPIカード --
   const total=recs.length;
   const done=recs.filter(r=>r.completed_at).length;
   const pallets=recs.reduce((s,r)=>s+(r.pallets||0),0);
@@ -2540,24 +2750,24 @@ function renderDashboard(){
   const spanH=times.length>1?(Math.max(...times)-Math.min(...times))/3600000:0;
   const prod=spanH>0?(total/spanH):0;
 
-  // ── 時間帯別件数（1h刻み） ──
+  // -- 時間帯別件数（1h刻み） --
   const byHour={};
   for(let h=0;h<24;h++) byHour[h]=0;
   recs.forEach(r=>{ if(r.created_at){ const h=new Date(r.created_at).getHours(); byHour[h]=(byHour[h]||0)+1; }});
   const hourData=Object.entries(byHour).map(([h,n])=>({label:`${h}時`,val:n})).filter(d=>d.val>0||
     (parseInt(d.label)>=6&&parseInt(d.label)<=22));
 
-  // ── トラック別件数 ──
+  // -- トラック別件数 --
   const byTruck={};
   recs.forEach(r=>{ const k=r.truck||"不明"; byTruck[k]=(byTruck[k]||0)+1; });
   const truckData=Object.entries(byTruck).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([k,v])=>({label:k,val:v}));
 
-  // ── 積み地別件数 ──
+  // -- 積み地別件数 --
   const byOki={};
   recs.forEach(r=>{ (r.oki_chi||"不明").split("、").forEach(o=>{ const k=o.trim()||"不明"; byOki[k]=(byOki[k]||0)+1; }); });
   const okiData=Object.entries(byOki).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:k,val:v}));
 
-  // ── 生産性推移（過去7日） ──
+  // -- 生産性推移（過去7日） --
   const prodDays={};
   records.forEach(r=>{
     if(!r.created_at) return;
@@ -2591,7 +2801,7 @@ function renderDashboard(){
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:8px">
       <b style="font-size:13px;color:#1e3a5f">⏰ ${lang==="ja"?"時間帯別件数":"Loads by hour"}</b>
       <p style="font-size:11px;color:#94a3b8;margin:2px 0 6px">${lang==="ja"?"1時間刻み":"1-hour intervals"}</p>
-      ${svgBar(hourData,"label","val","#2563eb",120)}
+      ${svgBarScroll(hourData,"label","val","#2563eb",140)}
     </div>
 
     <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:8px">
@@ -3065,13 +3275,29 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
-/* =====================================================================
- * 【下準備】物量予測・積込完了予測 ロジック予約
- * 画面への表示は実績データが十分に蓄積されてから実装する。
- * 現時点では「実績の保存」と「計算関数の骨格」のみ用意。
- * ===================================================================*/
+/* 保存成功フラッシュ（画面が一瞬グリーンになり「✓ 保存しました」と大きく出る） */
+function flashSuccess(msg){
+  const d=document.createElement("div");
+  d.style.cssText="position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,150,105,.88);animation:flashIn .18s ease";
+  d.innerHTML=`<div style="font-size:64px;margin-bottom:8px;animation:popIn .2s .1s both">✅</div>
+    <div style="color:#fff;font-size:22px;font-weight:800">${esc(msg||t().saved)}</div>`;
+  // CSS animation
+  if(!document.getElementById("flashStyle")){
+    const s=document.createElement("style"); s.id="flashStyle";
+    s.textContent="@keyframes flashIn{from{opacity:0}to{opacity:1}}@keyframes popIn{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}";
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(d);
+  setTimeout(()=>{ d.style.transition="opacity .3s"; d.style.opacity="0"; setTimeout(()=>d.remove(),300); }, 900);
+}
 
-/* ── ① 物量実績を volume_history へ日付つきで保存（volSave時に呼ぶ） ──
+// =====================================================================
+// 【下準備】物量予測・積込完了予測 ロジック予約
+// 画面への表示は実績データが十分に蓄積されてから実装する。
+// 現時点では「実績の保存」と「計算関数の骨格」のみ用意。
+// =====================================================================
+
+/* -- ① 物量実績を volume_history へ日付つきで保存（volSave時に呼ぶ） --
  * volume_shipmentは当日値の上書きのみのため、日別の履歴が残らない。
  * このテーブルに保存しておくことで、将来「通常比○%」計算の元データになる。
  * DB側に volume_history テーブルが必要（prepare_prediction.sql を先に実行）。 */
@@ -3103,7 +3329,7 @@ async function saveVolumeHistory(rows){
   }catch(e){ /* 履歴保存失敗はメイン処理を止めない */ }
 }
 
-/* ── ② 物量予測計算（実績蓄積後に画面へ反映する） ──────────────────
+/* -- ② 物量予測計算（実績蓄積後に画面へ反映する） ------------------
  * 「今日は通常比○%」= 今日の合計 / 直近N日の平均
  * 「○時頃出荷終了予測」= 開始時刻 + 今日の物量 / 生産性 / 人数
  * ※ 現時点では計算ロジックのみ。戻り値は使わない（表示しない）。     */
@@ -3141,7 +3367,7 @@ function calcVolumeAlert(historyRows, todayVolRows){
   }catch(e){ return null; }
 }
 
-/* ── ③ 積込完了予測（実績蓄積後に画面へ反映する） ──────────────────
+/* -- ③ 積込完了予測（実績蓄積後に画面へ反映する） ------------------
  * 各トラックの「1回転時間」と「1回転PL数」を load_records から計算する。
  * departed_at（出発）と returned_at（帰還）が蓄積されてから使える。
  * 「パレット残り○PL / 1回転PL × 1回転時間 + 現在時刻」= 完了予測時刻
@@ -3189,7 +3415,7 @@ function calcLoadingFinishForecast(records, palletRemainRows){
   }catch(e){ return []; }
 }
 
-/* ── 下準備ここまで ──────────────────────────────────────────────── */
+/* -- 下準備ここまで ------------------------------------------------ */
 
 // ===================== 取扱説明書（マニュアル） =====================
 // MANUAL_VERSION を上げ、MANUAL_CHANGELOG に項目を足すと「新着」案内が自動で出ます。
@@ -3239,7 +3465,7 @@ const MANUAL_CHANGELOG = [
 ];
 
 /* マニュアル本文セクション（日英対応）。title/paras/list/note は {ja,en}。
- * 図解は draw（CSSミニ画面のキー）。スクショは将来 <!-- screenshot:id --> に差し込み。 */
+ * 図解は draw（CSSミニ画面のキー）。スクショは将来 imgSlot に差し込み。 */
 function manualSections(){
   const L = lang==="en" ? "en" : "ja";
   const pick = o => (o && typeof o==="object") ? (o[L]||o.ja) : o;
@@ -3615,7 +3841,7 @@ function renderManual(){
     const draw=s.draw?manualDraw(s.draw):"";
     const note=s.note?`<div style="background:#eff6ff;border-left:4px solid #2563eb;border-radius:6px;padding:10px 12px;margin-top:8px;font-size:14px;color:#1e40af">💡 ${esc(s.note)}</div>`:"";
     // 画像差し込み口（将来スクショを入れる場所）
-    const imgSlot=`<!-- screenshot:${s.id} -->`;
+    const imgSlot=""; // screenshot slot: man_"+s.id
     return `<div id="man_${s.id}" class="panel" style="margin-bottom:12px;scroll-margin-top:70px">
       <div style="font-weight:800;font-size:18px;color:#1e293b;margin-bottom:4px">${s.icon} ${esc(s.title)}</div>
       ${paras}${list}${draw}${imgSlot}${note}
@@ -3693,6 +3919,7 @@ window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.a
 window.setUiSize=setUiSize; window.openSizePicker=openSizePicker; window.applyUiSize=applyUiSize;
 window.renderManual=renderManual; window.manualMarkSeen=manualMarkSeen;
 window.normalizeCourseCode=normalizeCourseCode;
+window.showUndoBanner=showUndoBanner; window.flashSuccess=flashSuccess;
 
 start();
 </script>
