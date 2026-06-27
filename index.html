@@ -101,7 +101,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 /* ---- 文言（日本語 / English） ---- */
 const T = {
  ja:{worker:"作業者",manager:"管理者",worksOffline:"オフライン対応",logout:"ログアウト",
-   homeTitle:"",today:"本日の横持ち",ken:"件",capture:"横持ち開始",viewList:"横持ちした一覧を見る",
+   homeTitle:"横持ち記録",today:"本日の横持ち",ken:"件",capture:"横持ち開始",viewList:"横持ちした一覧を見る",
    offlineNote:"電波が切れても、つながり次第まとめて送られます。",
    regTitle:"横持ちを登録",photos:"写真（1〜3枚）",take:"写真を撮る（積み込み後　荷姿）",
    fDest:"納品先",fTruck:"トラック",fOki:"積み地",fPallets:"パレット数",fComment:"コメント（任意）",
@@ -125,7 +125,7 @@ const T = {
    loginTitle:"横持ち管理システム",loginSub:"ログインしてください。",email:"メールアドレス",pass:"パスワード",login:"ログイン",loggingIn:"確認中…",loginNg:"ログインできません：",
    loading:"読み込み中…",you:"あなた"},
  en:{worker:"Worker",manager:"Manager",worksOffline:"Works offline",logout:"Log out",
-   homeTitle:"",today:"Today",ken:"",capture:"Yokomochi Start",viewList:"View all records",
+   homeTitle:"Yokomochi Records",today:"Today",ken:"",capture:"Yokomochi Start",viewList:"View all records",
    offlineNote:"Even with no signal, records send once you're back online.",
    regTitle:"New Yokomochi",photos:"Photos (1–3)",take:"Photo (after loading)",
    fDest:"Destination",fTruck:"Truck",fOki:"Loading dock",fPallets:"Pallets",fComment:"Comment (optional)",
@@ -1002,15 +1002,8 @@ function topbar(){
   </div>${adminPreviewBar}`;
 }
 function header(title,back){
-  // ホーム画面（title=""）はバナーをタイトル部分に表示
-  const titleContent = title==="" ?
-    `<div style="flex:1;overflow:hidden;display:flex;align-items:stretch;min-height:38px;margin:0 6px">
-      <div id="bannerLogo" style="width:72px;min-width:72px;background:#f1f5f9;border-right:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;color:#94a3b8"></div>
-      <img src="https://rlvoptkbeayclspbbkhs.supabase.co/storage/v1/object/public/assets/tsutom_banner.jpg" style="flex:1;height:42px;object-fit:cover;object-position:left center;display:block;border-radius:0 6px 6px 0">
-    </div>` :
-    `<div class="title">${esc(title)}</div>`;
-  return `<div class="header">${back?`<button class="back" onclick="${back}">‹</button>`:""}${titleContent}
-    <div style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0">
+  return `<div class="header">${back?`<button class="back" onclick="${back}">‹</button>`:""}<div class="title">${esc(title)}</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
       <button onclick="openSizePicker()" title="${lang==="ja"?"文字サイズ":"Text size"}" style="background:#fffbeb;border:2px solid #fbbf24;color:#92400e;border-radius:10px;min-width:46px;min-height:38px;padding:0 8px;line-height:1;display:inline-flex;align-items:baseline;justify-content:center;gap:1px"><span style="font-size:13px;font-weight:900">A</span><span style="font-size:20px;font-weight:900">A</span></button>
       <button onclick="go('manual')" title="${lang==="ja"?"取扱説明書":"Manual"}" style="position:relative;background:#fef2f2;border:2px solid #f87171;color:#991b1b;border-radius:10px;min-width:42px;min-height:38px;font-size:17px;font-weight:800;padding:0 8px;line-height:1">📖${manualHasNew()?`<span style="position:absolute;top:-5px;right:-5px;background:#dc2626;color:#fff;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;border:1.5px solid #fff">NEW</span>`:""}</button>
     </div></div>`;
