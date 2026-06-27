@@ -1181,11 +1181,12 @@ async function render(){
 
           ${(!isViewOnly&&!isDestOnly)?`<button class="btn" style="margin-top:8px;background:#7c3aed;font-size:19px;padding:20px" onclick="go('volume')">📊 ${lang==="ja"?"物量入力":"Volume input"}</button>`:""}
 
-          <!-- 現場用・管理者用：横持ち履歴とログアウトを横並び -->
+          <!-- 現場用・管理者用：横持ち履歴・DFレシート・ログアウトを横並び -->
           ${(!isViewOnly&&!isDestOnly)?`
-          <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
-            <button class="btn ghost small" style="flex:1;font-size:15px;padding:12px 16px;margin:0" onclick="go('list')">📋 ${lang==="ja"?"横持ち履歴":"Yokomochi history"}</button>
-            <button class="btn ghost small" style="font-size:15px;padding:12px 24px;margin:0;width:auto" onclick="logout()">${t().logout}</button>
+          <div style="display:flex;gap:6px;margin-top:14px;justify-content:flex-end">
+            <button class="btn ghost small" style="flex:1;font-size:13px;padding:10px 6px;margin:0" onclick="go('list')">📋 ${lang==="ja"?"横持ち履歴":"History"}</button>
+            <button class="btn ghost small" style="flex:1;font-size:13px;padding:10px 6px;margin:0;border-color:#fca5a5;color:#dc2626" onclick="openDfReceipt()">🧾 ${lang==="ja"?"DFレシート":"DF Receipt"}</button>
+            <button class="btn ghost small" style="font-size:13px;padding:10px 14px;margin:0;width:auto" onclick="logout()">${t().logout}</button>
           </div>`:`
           <!-- 閲覧用・納品先用：ログアウトのみ中央 -->
           <button class="btn ghost small" style="margin:14px auto 0;width:auto;font-size:15px;padding:12px 24px" onclick="logout()">${t().logout}</button>`}
@@ -3934,6 +3935,190 @@ async function topbarTranslate(){
   }
 }
 
+/* ---------- DFレシート ---------- */
+/* 当日の日付キー（YYYY-MM-DD） */
+function dfTodayKey(){ return todayStr(); }
+
+/* Supabase Storage: df_receipts バケット
+   パス: df_receipts/{YYYY-MM-DD}/{userId}_{timestamp}.jpg
+   バケットは public=false（signed URL で表示）
+*/
+let dfReceiptPhotos = [];   // {file, objectUrl, storagePath, uploading}
+let dfReceiptLoaded = false;
+let dfReceiptDate = "";     // 最後に読み込んだ日付
+
+/* DFレシートモーダルを開く */
+async function openDfReceipt(){
+  const today = dfTodayKey();
+  // 日付が変わっていたらリセット
+  if(dfReceiptDate !== today){
+    dfReceiptPhotos = [];
+    dfReceiptDate = today;
+    dfReceiptLoaded = false;
+  }
+  // モーダル描画（既存データをロード）
+  renderDfReceiptModal();
+  if(!dfReceiptLoaded){ await loadDfReceipts(); }
+}
+
+/* Supabase から当日の写真一覧をロード */
+async function loadDfReceipts(){
+  const today = dfTodayKey();
+  dfReceiptLoaded = true;
+  try{
+    const { data, error } = await sb.storage.from("df_receipts").list(today+"/", {
+      limit: 10, sortBy:{ column:"created_at", order:"asc" }
+    });
+    if(error){ console.warn("df_receipts list error", error); drawDfPhotos(); return; }
+    if(!data || data.length===0){ drawDfPhotos(); return; }
+    // 既に表示中のパスと重複しないものを追加
+    const existing = dfReceiptPhotos.map(p=>p.storagePath);
+    for(const item of data){
+      const path = today+"/"+item.name;
+      if(existing.includes(path)) continue;
+      // Signed URL を取得して表示
+      const { data:su } = await sb.storage.from("df_receipts").createSignedUrl(path, 3600);
+      if(su && su.signedUrl){
+        dfReceiptPhotos.push({ file:null, objectUrl:su.signedUrl, storagePath:path, uploading:false });
+      }
+    }
+    drawDfPhotos();
+  }catch(e){ console.warn("loadDfReceipts error",e); drawDfPhotos(); }
+}
+
+/* モーダル描画 */
+function renderDfReceiptModal(){
+  // 既存モーダルがあれば閉じる
+  const existing = document.getElementById("dfReceiptModal");
+  if(existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "dfReceiptModal";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;display:flex;align-items:flex-end;justify-content:center";
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:24px 24px 0 0;width:100%;max-width:520px;padding:22px 18px 40px;box-shadow:0 -4px 24px rgba(0,0,0,.18)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <span style="font-weight:800;font-size:19px">🧾 ${lang==="ja"?"DFレシート枚数":"DF Receipt Count"}</span>
+        <button onclick="closeDfReceipt()" style="background:none;border:none;font-size:26px;color:#64748b;padding:4px 8px;line-height:1">×</button>
+      </div>
+      <div style="color:#64748b;font-size:14px;margin-bottom:14px">
+        ${lang==="ja"?"本日（"+dfTodayKey()+"）の写真（最大2枚）。日付が変わると自動でリセットされます。":"Today's photos (max 2). Resets at midnight."}
+      </div>
+      <div id="dfPhotoArea" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;min-height:80px"></div>
+      <div id="dfPhotoMsg" style="font-size:13px;color:#94a3b8;margin-bottom:12px"></div>
+      <label id="dfAddBtn" style="display:${dfReceiptPhotos.length<2?'flex':'none'};align-items:center;justify-content:center;gap:8px;background:#fee2e2;color:#dc2626;border:2px dashed #fca5a5;border-radius:14px;padding:16px;font-size:16px;font-weight:700;cursor:pointer;margin:0">
+        📷 ${lang==="ja"?"写真を追加（"+( 2-dfReceiptPhotos.length)+"枚まで）":"Add photo ("+(2-dfReceiptPhotos.length)+" remaining)"}
+        <input id="dfFileInput" type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="onDfFiles(event)">
+      </label>
+    </div>`;
+  document.body.appendChild(overlay);
+  // overlay タップで閉じる（モーダル内はバブリング止め）
+  overlay.addEventListener("click", e=>{ if(e.target===overlay) closeDfReceipt(); });
+  drawDfPhotos();
+}
+
+/* 写真エリアの再描画 */
+function drawDfPhotos(){
+  const area = document.getElementById("dfPhotoArea");
+  const msg  = document.getElementById("dfPhotoMsg");
+  const addBtn = document.getElementById("dfAddBtn");
+  if(!area) return;
+
+  if(dfReceiptPhotos.length === 0){
+    area.innerHTML = `<div style="color:#94a3b8;font-size:15px;padding:10px 0">${lang==="ja"?"まだ写真がありません":"No photos yet"}</div>`;
+  } else {
+    area.innerHTML = dfReceiptPhotos.map((p,i)=>`
+      <div style="position:relative">
+        <img src="${p.objectUrl}" style="width:120px;height:120px;border-radius:14px;object-fit:cover;background:#e2e8f0;border:2px solid ${p.uploading?'#fbbf24':'#e2e8f0'}">
+        ${p.uploading?`<div style="position:absolute;inset:0;background:rgba(255,255,255,.6);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px">⏳</div>`:""}
+        ${!p.uploading?`<button onclick="removeDfPhoto(${i})" style="position:absolute;top:-8px;right:-8px;background:#dc2626;color:#fff;border:none;border-radius:999px;width:26px;height:26px;font-size:16px;line-height:1">×</button>`:""}
+      </div>`).join("");
+  }
+
+  if(msg){
+    const uploading = dfReceiptPhotos.filter(p=>p.uploading).length;
+    msg.textContent = uploading>0 ? (lang==="ja"?"アップロード中...":"Uploading...") : "";
+  }
+  if(addBtn){
+    const remaining = 2 - dfReceiptPhotos.length;
+    addBtn.style.display = remaining > 0 ? "flex" : "none";
+    const lbl = addBtn.querySelector("span") || addBtn;
+    addBtn.childNodes[0].textContent = "";
+    addBtn.innerHTML = `📷 ${lang==="ja"?"写真を追加（"+remaining+"枚まで）":"Add photo ("+remaining+" remaining)"}
+      <input id="dfFileInput" type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="onDfFiles(event)">`;
+  }
+}
+
+/* ファイル選択ハンドラ：圧縮 → Supabase アップロード */
+async function onDfFiles(e){
+  const MAX_BYTES = 10 * 1024 * 1024;
+  const ALLOWED_TYPES = ['image/jpeg','image/png','image/webp','image/heic','image/heif'];
+  const remaining = 2 - dfReceiptPhotos.filter(p=>!p.uploading||p.storagePath).length;
+  if(remaining <= 0){ toast(lang==="ja"?"2枚まで追加できます":"Max 2 photos"); return; }
+
+  const files = [...e.target.files].slice(0, remaining);
+  e.target.value = "";
+
+  for(const f of files){
+    if(!ALLOWED_TYPES.includes(f.type.toLowerCase()) && !f.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|heic|heif)$/)){
+      toast(lang==="ja"?`「${f.name}」は画像ファイルではありません`:`"${f.name}" is not an image`);
+      continue;
+    }
+    if(f.size > MAX_BYTES){
+      toast(lang==="ja"?`「${f.name}」が10MBを超えています（${(f.size/1024/1024).toFixed(1)}MB）`:`"${f.name}" exceeds 10MB`);
+      continue;
+    }
+    // プレビュー用に仮追加（uploading=true）
+    const tmpUrl = URL.createObjectURL(f);
+    const tmpIdx = dfReceiptPhotos.length;
+    dfReceiptPhotos.push({ file:f, objectUrl:tmpUrl, storagePath:"", uploading:true });
+    drawDfPhotos();
+
+    // compressPhoto で圧縮（既存関数を流用）
+    const compressed = await compressPhoto(f);
+
+    // Supabase にアップロード
+    const today = dfTodayKey();
+    const uid = user ? user.id : "unknown";
+    const ts  = Date.now();
+    const path = `${today}/${uid}_${ts}.jpg`;
+    try{
+      const { error } = await sb.storage.from("df_receipts").upload(path, compressed, { contentType:"image/jpeg" });
+      if(error){ throw error; }
+      // Signed URL 取得
+      const { data:su } = await sb.storage.from("df_receipts").createSignedUrl(path, 3600);
+      dfReceiptPhotos[tmpIdx] = {
+        file: null,
+        objectUrl: su ? su.signedUrl : tmpUrl,
+        storagePath: path,
+        uploading: false
+      };
+      toast(lang==="ja"?"DFレシートを保存しました":"DF receipt saved");
+    }catch(err){
+      console.warn("df_receipt upload error", err);
+      toast(lang==="ja"?"アップロードに失敗しました":"Upload failed");
+      dfReceiptPhotos.splice(tmpIdx, 1);
+    }
+    drawDfPhotos();
+  }
+}
+
+/* 写真を削除（Supabase Storageからも削除） */
+async function removeDfPhoto(idx){
+  const p = dfReceiptPhotos[idx];
+  if(!p) return;
+  if(p.storagePath){
+    try{ await sb.storage.from("df_receipts").remove([p.storagePath]); }catch(e){ console.warn(e); }
+  }
+  dfReceiptPhotos.splice(idx, 1);
+  drawDfPhotos();
+}
+
+function closeDfReceipt(){
+  const m = document.getElementById("dfReceiptModal");
+  if(m) m.remove();
+}
+
 /* ---------- 設定 ---------- */
 function renderSettings(){
   app.innerHTML=topbar()+header(t().settings,`go('${role==="worker"?"home":"dashboard"}')`)+`<div class="pad">
@@ -3957,6 +4142,7 @@ window.setUiSize=setUiSize; window.openSizePicker=openSizePicker; window.applyUi
 window.renderManual=renderManual; window.manualMarkSeen=manualMarkSeen;
 window.normalizeCourseCode=normalizeCourseCode;
 window.showUndoBanner=showUndoBanner; window.flashSuccess=flashSuccess;
+window.openDfReceipt=openDfReceipt; window.closeDfReceipt=closeDfReceipt; window.removeDfPhoto=removeDfPhoto; window.onDfFiles=onDfFiles;
 
 start();
 </script>
