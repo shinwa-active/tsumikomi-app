@@ -664,7 +664,7 @@ function renderDirectLoad(){
         </select>
       </div>
       <div style="display:flex;gap:8px">
-        <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
+        <input id="dlcInput" placeholder="${lang==="ja"?"コース記号":"Course code"}" style="flex:1" oninput="this.value=normalizeCourseCode(this.value)" onkeydown="if(event.key==='Enter'){addDirectLoadCourse();}">
         <button class="btn small" style="padding:0 16px;background:#ea580c" onclick="addDirectLoadCourse()">＋ ${t().add}</button>
       </div>
     </div>
@@ -1330,7 +1330,7 @@ function drawCandidates(){
         return `<button class="chip" onclick="${fn}('${key}',${i})" style="background:${colorBg(col)};border:1px solid ${colorBd(col)}">${esc(v)}</button>`;
       }).join("")}</div>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1">
+        <input id="cCode_${key}" placeholder="${t().phCode}" style="flex:1" oninput="this.value=normalizeCourseCode(this.value)">
         ${inMix?"":`<input id="cPl_${key}" inputmode="numeric" placeholder="PL" style="width:56px;text-align:center">`}
         <button class="btn small" style="padding:0 14px;${inMix?"background:#7c3aed;color:#fff":""}" onclick="addCourseG('${key}')">＋</button>
       </div>
@@ -1553,7 +1553,9 @@ function closeQr(){
   if(typeof drawCourses==="function") drawCourses();
 }
 function addCourse(){
-  const c=document.getElementById("cCode").value.trim(); if(!c)return;
+  const raw=document.getElementById("cCode").value.trim();
+  const c=normalizeCourseCode(raw); if(!c)return;
+  document.getElementById("cCode").value=c; // 入力欄にも正規化後の値を反映
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
   // 行き先グループ違いのチェック（マスタに登録済みのコードのみ判定）
   if(!isHoliday){
@@ -1585,7 +1587,8 @@ function addCourseG(key){
   // 納品先によるコースグループ制限チェック
   if(courseGrpBlocked(key)){ toast(courseGrpBlockMsg(key)); return; }
   const ci=document.getElementById("cCode_"+key); const pi=document.getElementById("cPl_"+key); if(!ci) return;
-  const c=ci.value.trim(); if(!c) return;
+  const c=normalizeCourseCode(ci.value.trim()); if(!c) return;
+  ci.value=c; // 入力欄にも正規化後の値を反映
   if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
   const partials=isPartialDirectLoadCode(c);
   if(partials.length){
@@ -3562,6 +3565,7 @@ window.dashExportCsv=dashExportCsv;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
 window.setUiSize=setUiSize; window.openSizePicker=openSizePicker; window.applyUiSize=applyUiSize;
 window.renderManual=renderManual; window.manualMarkSeen=manualMarkSeen;
+window.normalizeCourseCode=normalizeCourseCode;
 
 start();
 </script>
