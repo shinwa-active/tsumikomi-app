@@ -526,13 +526,15 @@ async function loadPal(){
   pal=data||[];
   if(view.name==="pallet"||view.name==="home") render();
 }
-async function palAdjust(id,delta){
+async function palAdjust(id,delta,autoCheck=false){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   const row=pal.find(x=>x.id===id); if(!row) return;
   let v=palBase(row)+delta; if(v<0) v=0;
   await sb.from("pallet_remain").update({remain:v,updated_at:new Date().toISOString(),updated_date:todayStr()}).eq("id",id);
   await loadPal();
-  if(v===0) await checkPalletZeroToYoko(row.label);
+  // 手動操作（+/-ボタンまたはパレット残数入力）でのみ進捗ボードを自動チェック
+  // 横持ち登録による自動減算（markComplete）では発動しない
+  if(v===0 && autoCheck) await checkPalletZeroToYoko(row.label);
 }
 async function checkPalletZeroToYoko(palLabel){
   const prefix=yokoGroupPrefix(palLabel); if(!prefix) return;
@@ -778,11 +780,11 @@ function renderPallet(){
         <span style="margin-left:auto;color:#94a3b8;font-size:12px">${tm?(lang==="ja"?tm+" 時点":tm):(lang==="ja"?"未更新":"—")}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;${(isViewOnly||isDestOnly)?"opacity:.5":""}">
-        <button onclick="palAdjust(${r.id},-5)" style="flex:1;background:#fee2e2;color:#b91c1c;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">−5</button>
-        <button onclick="palAdjust(${r.id},-1)" style="flex:1;background:#fecaca;color:#991b1b;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">−1</button>
+        <button onclick="palAdjust(${r.id},-5,true)" style="flex:1;background:#fee2e2;color:#b91c1c;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">−5</button>
+        <button onclick="palAdjust(${r.id},-1,true)" style="flex:1;background:#fecaca;color:#991b1b;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">−1</button>
         <div style="flex:1.4;text-align:center"><span style="font-size:30px;font-weight:800;color:#0d9488">${n}</span><span style="font-size:14px;color:#64748b"> PL</span></div>
-        <button onclick="palAdjust(${r.id},1)" style="flex:1;background:#bbf7d0;color:#166534;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">＋1</button>
-        <button onclick="palAdjust(${r.id},5)" style="flex:1;background:#86efac;color:#14532d;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">＋5</button>
+        <button onclick="palAdjust(${r.id},1,true)" style="flex:1;background:#bbf7d0;color:#166534;border:none;border-radius:10px;padding:14px 0;font-size:18px;font-weight:bold">＋1</button>
+        <button onclick="palAdjust(${r.id},5,true)" style="flex:1;background:#86efac;color:#14532d;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold">＋5</button>
       </div>
     </div>`; };
   const total=pal.reduce((s,r)=>s+palBase(r),0);
@@ -2091,6 +2093,11 @@ async function renderDetail(id){
   let adminRow = role==="admin"?`<div style="display:flex;gap:10px"><button class="btn ghost" onclick="toast('${lang==="ja"?"本番では編集画面が開きます":"Edit opens here"}')">✎ ${t().edit}</button><button class="btn ghost" style="color:#dc2626;border-color:#fecaca" onclick="delRecord('${r.id}')">🗑 ${t().del}</button></div>`:"";
   app.innerHTML=topbar()+header(t().detailTitle,`go('${role==="worker"?"list":"search"}')`)+`<div class="pad" style="padding-bottom:90px">
     <div>${r.completed?`<span class="badge b-green">${t().loadedAt(r.completed_at?hhmm(r.completed_at):"")}</span>`:`<span class="badge b-amber">${t().pending}</span>`} ${r.dest_confirmed?`<span class="badge b-teal">${t().recvAt(r.dest_confirmed_at?hhmm(r.dest_confirmed_at):"")}</span>`:""}</div>
+    ${!r.completed?`<div style="background:#fffbeb;border:1.5px solid #fbbf24;border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px;color:#92400e;line-height:1.6">
+      ${lang==="ja"
+        ?"📦 <b>別の積み地で積み合わせする場合</b>は、左上の ‹ で戻ってください。<br>積み合わせしない場合は、下の内容を確認して<b>積込完了ボタン</b>を押してください。"
+        :"📦 <b>Adding cargo from another loading dock?</b> Tap ‹ to go back.<br>Otherwise, confirm the details below and tap <b>Loading complete</b>."}
+    </div>`:""}
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">${photosHtml}</div>
     <div class="panel" style="padding:0 14px">${info.map(([k,v])=>`<div class="row"><div class="k">${k}</div><div style="font-weight:500">${esc(v||t().none)}</div></div>`).join("")}</div>
     ${courseBox}${actions}${adminRow}
