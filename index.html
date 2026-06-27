@@ -1402,7 +1402,7 @@ function pickOki(i){
     }
     regOki.push(v);
   }
-  drawOki(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
+  drawOki(); drawCandidates(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
 }
 let mix=null; // {key, picks:[]}
 function drawCandidates(){
