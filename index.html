@@ -182,6 +182,65 @@ let isDestOnly = false;
 let previewRole = null;
 // 休日モード：ONのとき第一優先・コースグループ・積み地担当の制約を全解除
 let isHoliday = localStorage.getItem("isHoliday") === "1";
+
+/* ── 日本祝日テーブル（内閣府公表、2025〜2027年） ──────────────────
+ * 振替休日・国民の休日を含む確定値。2028年以降は随時更新が必要。      */
+const JP_HOLIDAYS = new Set([
+  /* 2025 */
+  "2025-01-01","2025-01-13","2025-02-11","2025-02-23","2025-02-24",
+  "2025-03-20","2025-04-29","2025-05-03","2025-05-04","2025-05-05","2025-05-06",
+  "2025-07-21","2025-08-11","2025-09-15","2025-09-23","2025-10-13",
+  "2025-11-03","2025-11-23","2025-11-24",
+  /* 2026 */
+  "2026-01-01","2026-01-12","2026-02-11","2026-02-23","2026-03-20",
+  "2026-04-29","2026-05-03","2026-05-04","2026-05-05",
+  "2026-07-20","2026-08-11","2026-09-21","2026-09-22","2026-09-23",
+  "2026-10-12","2026-11-03","2026-11-23",
+  /* 2027 */
+  "2027-01-01","2027-01-11","2027-02-11","2027-02-23","2027-03-21",
+  "2027-04-29","2027-05-03","2027-05-04","2027-05-05","2027-05-06",
+  "2027-07-19","2027-08-11","2027-08-12","2027-09-20","2027-09-23",
+  "2027-10-11","2027-11-03","2027-11-23","2027-11-24"
+]);
+
+/* 今日が「日曜・祝日」かを返す（土曜は別判定） */
+function isJpHolidayOrSunday(){
+  const d=new Date();
+  const dow=d.getDay(); // 0=日
+  if(dow===0) return true;
+  const ymd=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  return JP_HOLIDAYS.has(ymd);
+}
+function isSaturday(){ return new Date().getDay()===6; }
+
+/* 起動時・日付変更時に自動で休日モードを設定する。
+ * 土曜: 強制ON（手動変更不可）
+ * 日祝: ONに設定（手動でOFF可能）
+ * 平日: 作業者はOFFに強制。管理者は現在値を維持（手動で変更可能）  */
+function applyHolidayRule(){
+  if(isSaturday()){
+    isHoliday=true;
+    localStorage.setItem("isHoliday","1");
+    return;
+  }
+  if(isJpHolidayOrSunday()){
+    // 日祝：まだOFFなら自動でONにする（一度手動でOFFにした場合はそのまま維持）
+    if(localStorage.getItem("isHoliday")!=="0_manual"){
+      isHoliday=true;
+      localStorage.setItem("isHoliday","1");
+    } else {
+      isHoliday=false;
+    }
+    return;
+  }
+  // 平日：作業者はOFF強制
+  if(role!=="admin"){
+    isHoliday=false;
+    localStorage.setItem("isHoliday","0");
+  }
+  // 平日の管理者：localStorage の値をそのまま使う（現在のisHolidayを維持）
+}
+
 let isAdminAllowed = false;
 const VIEW_ONLY_EMAILS = ["nx-np@shinwa-active.co.jp"];
 const DEST_ONLY_EMAILS = ["u123456@shinwa-active.co.jp"];
@@ -714,6 +773,8 @@ function openPhoto(i){
 async function start(){
   ensureCourseDefaults();
   applyUiSize();
+  // 土曜は起動時点でローカルストレージを自動ON（ロール確定前の先行処理）
+  if(isSaturday()){ isHoliday=true; localStorage.setItem("isHoliday","1"); }
   app.innerHTML = `<div class="center"><div>${t().loading}</div></div>`;
   const {data}=await sb.auth.getSession();
   if(data&&data.session){ user=data.session.user; await afterLogin(); }
@@ -876,10 +937,10 @@ function tabbar(){
     : [["dashboard","📊",t().tDash],["search","🔍",t().tSearch],["history","🕘",t().tHist],["master","🗂",t().tMaster]];
   return `<div class="tabbar">${tabs.map(([k,ic,l])=>`<button class="tab ${view.name===k?"on":""}" onclick="go('${k}')"><span class="ic">${ic}</span>${l}</button>`).join("")}</div>`;
 }
-function enterWorker(){ role="worker"; adminAuthed=false; go("home"); }
+function enterWorker(){ role="worker"; adminAuthed=false; applyHolidayRule(); go("home"); }
 function enterAdmin(){
   if(!isAdminAllowed){ toast(lang==="ja"?"このアカウントは管理者画面に入れません":"This account cannot access the admin screen"); return; }
-  role="admin"; go("dashboard");
+  role="admin"; applyHolidayRule(); go("dashboard");
 }
 
 function badgesNoConf(r){
@@ -1080,9 +1141,9 @@ function renderRegister(){
     ${addMoreSection}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
       <label style="margin:0">${t().fOki}</label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:${isHoliday?"#d97706":"#64748b"};cursor:pointer;background:${isHoliday?"#fffbeb":"#f8fafc"};border:2px solid ${isHoliday?"#f59e0b":"#e2e8f0"};border-radius:10px;padding:7px 14px">
-        <input type="checkbox" id="holidayChk" ${isHoliday?"checked":""} onchange="toggleHoliday(this.checked)" style="width:20px;height:20px;cursor:pointer;accent-color:#f59e0b">
-        🏖 ${lang==="ja"?"休日モード":"Holiday mode"}
+      <label style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:${isHoliday?"#d97706":(!isSaturday()&&!isJpHolidayOrSunday()&&role!=="admin")?"#94a3b8":"#64748b"};cursor:${(isSaturday()||(!isSaturday()&&!isJpHolidayOrSunday()&&role!=="admin"))?"not-allowed":"pointer"};background:${isHoliday?"#fffbeb":"#f8fafc"};border:2px solid ${isHoliday?"#f59e0b":(!isSaturday()&&!isJpHolidayOrSunday()&&role!=="admin")?"#e2e8f0":"#e2e8f0"};border-radius:10px;padding:7px 14px;opacity:${(isSaturday()||(!isSaturday()&&!isJpHolidayOrSunday()&&role!=="admin"))?".55":"1"}">
+        <input type="checkbox" id="holidayChk" ${isHoliday?"checked":""} onchange="toggleHoliday(this.checked)" ${isSaturday()?"disabled":""} style="width:20px;height:20px;cursor:${(isSaturday()||(!isSaturday()&&!isJpHolidayOrSunday()&&role!=="admin"))?"not-allowed":"pointer"};accent-color:#f59e0b">
+        🏖 ${lang==="ja"?"休日モード":"Holiday mode"}${isSaturday()?(lang==="ja"?"（土曜：自動ON）":"（Sat: auto）"):(!isSaturday()&&!isJpHolidayOrSunday()&&role!=="admin")?(lang==="ja"?"（平日：管理者のみ）":"（Weekday: admin only）"):""}
       </label>
     </div>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
@@ -1731,11 +1792,33 @@ async function cleanupOldCourses(){
 }
 
 function toggleHoliday(val){
-  isHoliday=val;
-  localStorage.setItem("isHoliday", val?"1":"0");
-  // チェックボックスラベルの色を即座に更新
-  const lbl=document.querySelector("label[style*='holidayChk'],label:has(#holidayChk)");
-  // ラベル色変更はrender不要 → updateAnomのみ再実行
+  const sat=isSaturday();
+  const holOrSun=isJpHolidayOrSunday();
+
+  // 土曜は常に強制ON・手動変更不可
+  if(sat){
+    isHoliday=true;
+    localStorage.setItem("isHoliday","1");
+    // チェックボックスを強制的に戻す
+    const chk=document.getElementById("holidayChk"); if(chk) chk.checked=true;
+    toast(lang==="ja"?"土曜日は自動で休日モードになります":"Holiday mode is automatic on Saturdays");
+    return;
+  }
+  // 平日は作業者には操作不可
+  if(!holOrSun && role!=="admin"){
+    isHoliday=false;
+    const chk=document.getElementById("holidayChk"); if(chk) chk.checked=false;
+    toast(lang==="ja"?"平日は管理者のみ休日モードを変更できます":"Only admins can change Holiday mode on weekdays");
+    return;
+  }
+  // 日祝で手動OFFした場合は特別フラグを記録（再起動時の自動ONを抑制）
+  if(holOrSun && !val){
+    localStorage.setItem("isHoliday","0_manual");
+    isHoliday=false;
+  } else {
+    isHoliday=val;
+    localStorage.setItem("isHoliday",val?"1":"0");
+  }
   if(view.name==="register"||view.name==="addmore") render();
 }
 
@@ -3192,19 +3275,19 @@ function manualSections(){
       id:"holiday", icon:"🏖",
       title:{ja:"休日モード（土日祝用）", en:"Holiday Mode (Weekends & Holidays)"},
       paras:[
-        {ja:"「🏖 休日モード」にチェックを入れると、土日祝などの特別な日のために、いくつかの制限が外れます。",
-         en:"Turning on \"🏖 Holiday Mode\" lifts a few restrictions for special days like weekends and public holidays."}
+        {ja:"休日モードがONになると、いくつかの制限が外れます（第一優先チェックなし・全コース選択可・担当外積み地の確認なし）。",
+         en:"When Holiday Mode is ON, some restrictions are lifted: no priority check, all course groups available, and no dock assignment warning."}
       ],
       list:[
-        {ja:"第一優先が未完了でも、通常コースで登録できます。",
-         en:"You can register with normal courses even if priority routes aren't done."},
-        {ja:"どの納品先でも、全グループのコースが選べます。",
-         en:"You can pick courses from any group, for any destination."},
-        {ja:"担当外の積み地でも、確認ダイアログが出ません。",
-         en:"No confirmation appears even for a dock outside your assignment."}
+        {ja:"土曜日は自動でONになります。手動で変えることはできません。",
+         en:"Saturdays: turns on automatically and cannot be changed manually."},
+        {ja:"日曜・祝日は自動でONになります。必要な場合は手動でOFFにできます。",
+         en:"Sundays and holidays: turns on automatically. You can manually turn it off if needed."},
+        {ja:"平日は自動でOFFです。作業者は変更できません。管理者だけが手動でONにできます。",
+         en:"Weekdays: off by default. Workers cannot change it. Only admins can turn it on manually."}
       ],
-      note:{ja:"このチェックは、ブラウザを閉じても残ります。平日に戻すときは外し忘れに注意してください。",
-            en:"This setting stays on even after you close the browser. Remember to turn it off when going back to weekdays."}
+      note:{ja:"土曜のONは自動のため、平日に戻っても自動でOFFになります。外し忘れの心配はありません。",
+            en:"Saturday's automatic ON resets automatically on weekdays. No need to worry about forgetting to turn it off."}
     },
     {
       id:"translate", icon:"🌐",
