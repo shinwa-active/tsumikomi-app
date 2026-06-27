@@ -2005,7 +2005,6 @@ async function saveRecord(){
     if(a.length) await sb.from("anomaly_logs").insert(a.map(m=>({record_id:rec.id,type:"input",message:m})));
     await sb.from("notifications").insert({record_id:rec.id,message:`${dest||"-"} / ${truck||"-"} 登録`});
     await logActivity("insert","load_records",rec.id,`${dest||"-"} / ${truck||"-"}`,null,{destination:dest,truck:truck,pallets:pallets});
-    flashSuccess(lang==="ja"?"登録しました":"Saved!");
     await loadRecords();
     pendingCompleteId=rec.id;
     go("detail",{id:rec.id});
@@ -2132,7 +2131,8 @@ async function markComplete(id){
   }
   if(warns.length) toast((lang==="ja"?"パレット残数の対象が見つかりません：":"Pallet route not found: ")+warns.join("、"));
   await loadRecords();
-  // Undo：5秒以内に取り消し可能
+  flashSuccess(lang==="ja"?"積込完了しました":"Loading complete!");
+  // Undo：15秒以内に取り消し可能
   showUndoBanner(lang==="ja"?"積込完了にしました　→":"Marked loaded　→", async()=>{
     await sb.from("load_records").update({completed:false,completed_at:null}).eq("id",id);
     await loadRecords(); renderDetail(id);
@@ -3420,14 +3420,24 @@ function calcLoadingFinishForecast(records, palletRemainRows){
 // ===================== 取扱説明書（マニュアル） =====================
 // MANUAL_VERSION を上げ、MANUAL_CHANGELOG に項目を足すと「新着」案内が自動で出ます。
 // 各セクションに screenshot を後から差し込めるよう img プロパティを用意（今は未使用）。
-const MANUAL_VERSION = 5;            // 機能変更のたびに +1
+const MANUAL_VERSION = 6;            // 機能変更のたびに +1
 const MANUAL_UPDATED  = "2026-06-27"; // 最終更新日
 
 /* 更新履歴（新しいものを上に。verは導入時のMANUAL_VERSION） */
 const MANUAL_CHANGELOG = [
+  { ver:6, date:"2026-06-27",
+    ja:[
+      "「積込完了」「納品先で確認」を押した後、15秒間「取り消す」ボタンが画面下に出るようになりました。",
+      "横持ち登録直後の「登録しました」フラッシュを廃止。代わりに「積込完了」ボタンを押したときに表示されます。",
+      "写真が自動で圧縮されるようになりました（撮影後に自動で縮小・軽量化）。"
+    ],
+    en:[
+      "An \"Undo\" button now appears for 15 seconds after tapping \"Loading complete\" or \"Delivery confirmed\".",
+      "The flash on registration is removed. It now appears when you tap \"Loading complete\" instead.",
+      "Photos are now auto-compressed after capture."
+    ]},
   { ver:5, date:"2026-06-27",
     ja:[
-      "説明書に「直積みに変更コース」の説明を追加（入力方法・完全ブロックと荷主別の違い）。",
       "説明書に「コース記号の文字は自動で変換されます」の説明を追加。",
       "休日モードが自動化されました（土曜：自動ON、日祝：自動ON、平日：管理者のみ変更可）。"
     ],
@@ -3632,7 +3642,9 @@ function manualSections(){
         {ja:"押しすぎたボタンをもう一度押すと、そこまで戻せます（例：3/3で2個目を押すと1/3に戻る）。",
          en:"Tap an already-checked button again to step back (e.g., at 3/3, tapping the 2nd goes back to 1/3)."},
         {ja:"全部チェックし終えると、「納品先で確認（完了にする）」ボタンが押せるようになります。",
-         en:"Once all are checked, the \"Delivery confirmed\" button becomes tappable."}
+         en:"Once all are checked, the \"Delivery confirmed\" button becomes tappable."},
+        {ja:"「積込完了」または「納品先で確認」を押すと、画面下に15秒間「取り消す」ボタンが出ます。押し間違えた場合は15秒以内に押せば元に戻せます。",
+         en:"After tapping \"Loading complete\" or \"Delivery confirmed\", an \"Undo\" button appears at the bottom for 15 seconds. Tap it within 15 seconds to revert."}
       ]
     },
     {
@@ -3724,8 +3736,8 @@ function manualSections(){
          en:"You can't register until Loading dock, Destination, Truck, and Course codes are all filled in."},
         {ja:"DC3は、ほかの納品先といっしょに積み合わせできません。",
          en:"DC3 can't be combined with other destinations on the same load."},
-        {ja:"写真は10MBまで。JPEG・PNG・WebP・HEIC以外は使えません。",
-         en:"Photos are up to 10 MB. Only JPEG, PNG, WebP, and HEIC are allowed."},
+        {ja:"写真は10MBまで。JPEG・PNG・WebP・HEIC以外は使えません。（撮影後に自動で圧縮されます）",
+         en:"Photos are up to 10 MB. Only JPEG, PNG, WebP, and HEIC are allowed. (Auto-compressed after capture)"},
         {ja:"「積込完了」を押さずに別の画面へ移ろうとすると、確認が出ます。",
          en:"If you try to leave without tapping \"Loading complete\", a confirmation appears."},
         {ja:"閲覧専用・納品先確認のアカウントは、書き込み操作ができません。",
