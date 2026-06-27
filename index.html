@@ -1285,25 +1285,39 @@ function renderAddMore(id){
   const r=records.find(x=>String(x.id)===String(id));
   if(!r){ go("home"); return; }
   regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
-  // 前の登録の納品先をregDestsに初期セット（コース看板ロック解除のため）
+  // 前の登録の納品先をregDestsに初期セット
   if(r.destination){ r.destination.split("、").filter(Boolean).forEach(d=>{ if(!regDests.includes(d)) regDests.push(d); }); }
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
+  // トラックマスタを取得してUI生成（前の登録トラックのみ選択可能・自動選択済み）
+  const truckMaster=getMaster("truck");
+  const prevTruck=r.truck||"";
+  const truckBtns=truckMaster.map(v=>{
+    const isMatch=v===prevTruck;
+    return `<button class="chip" onclick="${isMatch?`pickTruck(${JSON.stringify(v).replace(/"/g,"&quot;")})`:"void 0"}"
+      style="${isMatch?"background:#2563eb;color:#fff;border-color:#2563eb":"opacity:.35;cursor:not-allowed;background:#f1f5f9;color:#94a3b8"}"
+      title="${isMatch?"":"("+( lang==="ja"?"このトラックに追加できません":"Cannot add to this truck")+")"}">
+      ${esc(v)}${isMatch?"":" 🔒"}
+    </button>`;
+  }).join("");
   app.innerHTML=topbar()+header(lang==="ja"?"追加で登録":"Add more","go('detail',{id:'"+id+"'})")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
-    <div class="panel" style="background:#eff6ff;border:none;color:#1e3a8a">
-      <b>${lang==="ja"?"このトラックに追加します":"Adding to this truck"}</b>
-      <div style="margin-top:6px;font-size:14px">${esc(r.truck||t().noTruck)}</div>
-      <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの納品先：":"Destination so far: "}${esc(r.destination||t().none)}</div>
-      <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの積み地：":"Loaded so far: "}${esc(r.oki_chi||t().none)}</div>
+    <div class="panel" style="background:#eff6ff;border:2px solid #bfdbfe;color:#1e3a8a;margin-bottom:4px">
+      <b>${lang==="ja"?"追加積み合わせ登録":"Add to existing load"}</b>
+      <div style="font-size:13px;color:#475569;margin-top:4px">${lang==="ja"?"これまでの納品先：":"Destination so far: "}${esc(r.destination||t().none)}</div>
+      <div style="font-size:13px;color:#475569">${lang==="ja"?"これまでの積み地：":"Loaded so far: "}${esc(r.oki_chi||t().none)}</div>
     </div>
-    <!-- トラック値をdrawCandidatesに伝えるための隠し入力欄（追加登録はトラック固定） -->
-    <input id="truck" value="${esc(r.truck||"")}" style="display:none" readonly>
-    <label>${t().fOki}</label>
+
+    <label>${t().fTruck}</label>
+    <p class="hint">${lang==="ja"?"積み合わせ中のトラックのみ選択できます":"Only the truck currently being loaded is selectable"}</p>
+    <div id="truckArea" style="display:flex;gap:8px;flex-wrap:wrap">${truckBtns}</div>
+    <input id="truck" value="${esc(prevTruck)}" style="display:none">
+
+    <label style="margin-top:16px">${t().fOki}</label>
     <p class="hint">${lang==="ja"?"今回追加で積む場所を選んでください":"Choose the location for this additional load"}</p>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
     <label>${t().fDest}</label>
-    <p class="hint">${lang==="ja"?"納品先が追加で増える場合だけ選んでください（変わらない場合は空のままでOK）":"Only choose if there's an additional destination (leave empty if unchanged)"}</p>
+    <p class="hint">${lang==="ja"?"納品先が追加で増える場合だけ選んでください（変わらない場合は空のままでOK）":"Only choose if there is an additional destination (leave empty if unchanged)"}</p>
     <div id="destArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
 
     <label>${t().coursesLabel}</label>
