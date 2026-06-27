@@ -1285,6 +1285,8 @@ function renderAddMore(id){
   const r=records.find(x=>String(x.id)===String(id));
   if(!r){ go("home"); return; }
   regPhotos.length=0; regCourses.length=0; mix=null; regOki.length=0; regDests.length=0;
+  // 前の登録の納品先をregDestsに初期セット（コース看板ロック解除のため）
+  if(r.destination){ r.destination.split("、").filter(Boolean).forEach(d=>{ if(!regDests.includes(d)) regDests.push(d); }); }
   const voNote=(isViewOnly||isDestOnly)?`<div class="panel" style="background:#f1f5f9;border:2px solid #cbd5e1;color:#475569;margin-bottom:4px"><b>👁 ${lang==="ja"?"閲覧専用です。登録はできません。":"View only. Cannot register."}</b></div>`:"";
   app.innerHTML=topbar()+header(lang==="ja"?"追加で登録":"Add more","go('detail',{id:'"+id+"'})")+`<div class="pad" style="padding-bottom:110px">
     ${voNote}
@@ -1294,6 +1296,8 @@ function renderAddMore(id){
       <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの納品先：":"Destination so far: "}${esc(r.destination||t().none)}</div>
       <div style="margin-top:2px;font-size:13px;color:#475569">${lang==="ja"?"これまでの積み地：":"Loaded so far: "}${esc(r.oki_chi||t().none)}</div>
     </div>
+    <!-- トラック値をdrawCandidatesに伝えるための隠し入力欄（追加登録はトラック固定） -->
+    <input id="truck" value="${esc(r.truck||"")}" style="display:none" readonly>
     <label>${t().fOki}</label>
     <p class="hint">${lang==="ja"?"今回追加で積む場所を選んでください":"Choose the location for this additional load"}</p>
     <div id="okiArea" style="display:flex;gap:8px;flex-wrap:wrap"></div>
