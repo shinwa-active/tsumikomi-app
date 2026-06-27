@@ -1491,7 +1491,34 @@ function closeQr(){
   const ov=document.getElementById("qrOverlay"); if(ov) ov.remove();
   if(typeof drawCourses==="function") drawCourses();
 }
-function addCourse(){ const c=document.getElementById("cCode").value.trim(); if(!c)return; if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; } const p=parseInt(document.getElementById("cPl").value)||1; regCourses.push({code:c,pl:p,grp:"manual"}); document.getElementById("cCode").value="";document.getElementById("cPl").value=""; drawCourses(); if(view.name==="addmore") updateAnomAddMore(); else updateAnom(); }
+function addCourse(){
+  const c=document.getElementById("cCode").value.trim(); if(!c)return;
+  if(isDirectLoadCode(c)){ toast(lang==="ja"?"このコースは本日「直積み」に変更されています":"This course is set to direct loading today"); return; }
+  // 行き先グループ違いのチェック（マスタに登録済みのコードのみ判定）
+  if(!isHoliday){
+    const allowedGrps=allowedCourseGrps();
+    if(allowedGrps){
+      const inDc1_4f=getMaster("course_dc1_4f").includes(c)||getMaster("course_dc1").includes(c);
+      const inDc1_1f=getMaster("course_dc1_1f").includes(c)||getMaster("course_dc1").includes(c);
+      const inDc3=getMaster("course_dc3").includes(c);
+      if(inDc1_4f||inDc1_1f||inDc3){
+        const ok=(inDc1_4f&&allowedGrps.dc1_4f)||(inDc1_1f&&allowedGrps.dc1_1f)||(inDc3&&allowedGrps.dc3);
+        if(!ok){
+          const dest=inDc3?"DC3":(inDc1_4f?"DC1 4F":"DC1 1F");
+          const msg=lang==="ja"
+            ?`⚠ 注意\n\n「${c}」は ${dest} 行きのコースです。\n今回の納品先と行き先が違います。\n\nそれでも追加しますか？`
+            :`⚠ Warning\n\n"${c}" is a ${dest} course.\nThis doesn't match your current destination.\n\nAdd anyway?`;
+          if(!confirm(msg)) return;
+        }
+      }
+    }
+  }
+  const p=parseInt(document.getElementById("cPl").value)||1;
+  regCourses.push({code:c,pl:p,grp:"manual"});
+  document.getElementById("cCode").value=""; document.getElementById("cPl").value="";
+  drawCourses();
+  if(view.name==="addmore") updateAnomAddMore(); else updateAnom();
+}
 function addCourseG(key){
   if(isViewOnly||isDestOnly) return viewOnlyBlock();
   // 納品先によるコースグループ制限チェック
@@ -2866,6 +2893,28 @@ async function masterSortByColor(){
   if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
   else toast(lang==="ja"?"色でまとめて並べ替えました":"Reordered by color");
 }
+/* 数字→英字→カナ順ソート。先頭1文字の種別（数字→英字→カタカナ→その他）を判定し、
+ * 同種内は文字列の自然順（ロケール比較）で並べる。 */
+async function masterSortInGroup(){
+  if(!confirm(lang==="ja"?"数字→英字→カナの順に並べ替えます。よろしいですか？":"Sort in order: numbers → letters → katakana. OK?")) return;
+  const arr=(masterRows[mf.mode]||[]).slice();
+  const typeOf=v=>{
+    const c=(v||"").trim().charAt(0);
+    if(/[0-9０-９]/.test(c)) return 0;   // 数字
+    if(/[A-Za-zａ-ｚＡ-Ｚ]/.test(c)) return 1; // 英字
+    if(/[\u30A0-\u30FF]/.test(c)) return 2; // カタカナ
+    return 3; // その他
+  };
+  const indexed=arr.map((r,idx)=>({r,idx,t:typeOf(r.value)}));
+  indexed.sort((a,b)=>(a.t-b.t)||(a.r.value||"").localeCompare(b.r.value||"",lang==="ja"?"ja":"en",{numeric:true,sensitivity:"base"}));
+  const changed=[];
+  indexed.forEach((item,newIdx)=>{ if(item.r.sort_order!==newIdx){ item.r.sort_order=newIdx; changed.push(item.r); } });
+  masterRows[mf.mode]=indexed.map(item=>item.r);
+  renderMaster();
+  const results=await Promise.all(changed.map(r=>sb.from("master_items").update({sort_order:r.sort_order}).eq("id",r.id)));
+  if(results.some(x=>x&&x.error)){ toast(lang==="ja"?"並べ替えの保存に失敗しました":"Reorder save failed"); await loadMaster(); }
+  else toast(lang==="ja"?"数字→英字→カナ順に並べ替えました":"Sorted: numbers → letters → katakana");
+}
 async function masterMove(i,dir){
   const arr=masterRows[mf.mode]||[]; const j=i+dir; if(j<0||j>=arr.length) return;
   const tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;
@@ -2925,7 +2974,7 @@ const MANUAL_CHANGELOG = [
       "画面右上に「取扱説明書」ボタンを追加。いつでもこの説明書を開けます。"
     ],
     en:[
-      "Volume entered in Home > Volume Input is now automatically reflected in the shipment totals.",
+      "Volume entered in Home > Volume input is now automatically reflected in the shipment totals.",
       "Added a text-size button at the top right. You can switch between Small, Medium, and Large.",
       "Added a Manual button at the top right. You can open this manual anytime."
     ]},
@@ -2956,8 +3005,8 @@ function manualSections(){
       id:"start", icon:"🚪",
       title:{ja:"はじめに（このアプリは何？）", en:"Getting Started (What is this app?)"},
       paras:[
-        {ja:"「横持ち（よこもち）」とは、倉庫の中で荷物をトラックに積んで別の場所へ運ぶ作業のことです。",
-         en:"\"Yokomochi\" means moving goods inside the warehouse by loading them onto a truck and carrying them to another location."},
+        {ja:"「横持ち（よこもち）」とは、同じ敷地内や近くにある倉庫の間で、荷物をトラックに積んで移動・中継させる輸送作業のことです。",
+         en:"\"Yokomochi\" is the work of loading goods onto a truck and moving them between warehouses on the same site or nearby—a short-distance transfer operation."},
         {ja:"このアプリは、誰が・いつ・どこへ・何パレット運んだかをスマホで記録し、全員でリアルタイムに共有するための道具です。",
          en:"This app lets you record who moved what, when, where, and how many pallets—right from your phone—and shares it with everyone in real time."},
         {ja:"電波が切れても入力でき、つながり次第まとめて送られます。だから現場のどこにいても使えます。",
@@ -2977,24 +3026,6 @@ function manualSections(){
       ]
     },
     {
-      id:"roles", icon:"👥",
-      title:{ja:"アカウントの種類", en:"Account Types"},
-      paras:[
-        {ja:"ログインするアカウントによって、できることが少し変わります。",
-         en:"What you can do depends a little on which account you log in with."}
-      ],
-      list:[
-        {ja:"現場（worker）… 横持ちの登録・確認・物量入力ができます。ふだん使うのはこれです。",
-         en:"Worker — Can register and check yokomochi and enter volume. This is the one most people use."},
-        {ja:"閲覧専用… 見るだけのアカウントです。登録や変更はできません。",
-         en:"View-only — A view-only account. Cannot register or make changes."},
-        {ja:"納品先確認… 納品先での確認だけを行うアカウントです。",
-         en:"Delivery — An account for confirming at the delivery destination only."}
-      ],
-      note:{ja:"自分のアカウントで操作できないボタンがある場合は、その立場では使えない機能です。",
-            en:"If a button doesn't work on your account, that feature isn't available for your role."}
-    },
-    {
       id:"home", icon:"🏠",
       title:{ja:"ホーム画面の見かた", en:"The Home Screen"},
       draw:"home",
@@ -3006,14 +3037,14 @@ function manualSections(){
         {ja:"緑の「パレット 残り合計」は、今まだ運び終えていないパレットの数です。",
          en:"The green \"Pallets left\" shows how many pallets still haven't been delivered."},
         {ja:"紫の「📊 物量入力」を押すと、荷主ごとの出荷量を入力できます（後で説明します）。",
-         en:"Tap the purple \"📊 Volume Input\" to enter shipment volume by shipper (explained later)."},
+         en:"Tap the purple \"📊 Volume input\" to enter shipment volume by shipper (explained later)."},
         {ja:"画面の下に「ホーム」「一覧」などのボタンがあり、押すと画面が切り替わります。",
          en:"At the bottom are buttons like \"Home\" and \"List\" to switch screens."}
       ]
     },
     {
       id:"register", icon:"📷",
-      title:{ja:"横持ちを登録する（写真撮影）", en:"Registering a Yokomochi (Taking Photos)"},
+      title:{ja:"横持ちを登録する", en:"Registering a Yokomochi"},
       draw:"register",
       paras:[
         {ja:"「横持ち開始」を押したら、次の順で入れていきます。",
@@ -3060,6 +3091,8 @@ function manualSections(){
       paras:[
         {ja:"進捗ボードで「第一優先（急ぎ）」に設定されたルートは、先に終わらせる決まりです。",
          en:"Routes marked \"Priority (urgent)\" on the progress board must be finished first."},
+        {ja:"たとえば「DC2 5F → DC1 4F」が第一優先に設定されている場合、そのルートの積み出しが全部終わったら、進捗ボードの該当コースにチェックを入れます。",
+         en:"For example, if \"DC2 5F → DC1 4F\" is set as priority, once all the loading for that route is done, put a check on that course in the progress board."},
         {ja:"第一優先がまだ終わっていないのに、通常コースだけで登録しようとすると「第一優先コースを含めてください」と出て登録できません。",
          en:"If priority routes aren't done yet and you try to register with normal courses only, it says \"Please include a priority course\" and blocks you."},
         {ja:"土曜・日曜は、第一優先のセクションは表示されません（通常ルートだけになります）。",
@@ -3113,9 +3146,7 @@ function manualSections(){
       draw:"volume",
       paras:[
         {ja:"ホームの「📊 物量入力」で、荷主ごと（シャーク・シロカ・ドリーム・パイオニア・アトム電器）の出荷量と出勤人数を入れて「保存する」を押します。",
-         en:"In Home > \"📊 Volume Input\", enter the shipment volume and attendance for each shipper (Shark, Siroca, Dream, Pioneer, Atom Denki), then tap \"Save\"."},
-        {ja:"保存すると、その数は自動で集計に入ります。同じ数を別の場所にもう一度入力する必要はありません。",
-         en:"Once saved, the numbers go into the totals automatically. There's no need to enter the same numbers anywhere else."},
+         en:"In Home > \"📊 Volume input\", enter the shipment volume and attendance for each shipper (Shark, Siroca, Dream, Pioneer, Atom Denki), then tap \"Save\"."},
         {ja:"出勤人数を入れると、処理能力や負荷の目安が自動で計算されて表示されます。",
          en:"When you enter attendance, an estimate of capacity and workload is calculated and shown automatically."}
       ],
@@ -3124,14 +3155,18 @@ function manualSections(){
     },
     {
       id:"pallet", icon:"📦",
-      title:{ja:"パレット残数", en:"Pallets Left"},
+      title:{ja:"パレット残数の入力タイミングと使い方", en:"When and How to Enter Pallets Left"},
       paras:[
-        {ja:"「＋／−」のボタンで、運び終えていないパレットの残り数を変えられます。変えると時刻が自動で記録されます。",
-         en:"Use the \"+ / −\" buttons to change the number of pallets still left. The time is recorded automatically when you change it."},
-        {ja:"翌日になると、残数は自動でゼロに戻ります。",
-         en:"The count resets to zero automatically the next day."},
-        {ja:"リアルタイムで全員に共有されます。",
-         en:"It's shared with everyone in real time."}
+        {ja:"パレット残数は、各フロアで「出荷・荷揃い・検品がすべて終わり、横持ちできる状態になった」タイミングで入力します。",
+         en:"Enter the pallet count when all shipping, picking, and inspection on your floor are done and the pallets are ready for yokomochi."},
+        {ja:"フロアごとの目安はこのとおりです。5F（DC2 5Fフロア）、3F（DC2 3F ABフロア）、アトム電器フロアの3か所それぞれで入力します。",
+         en:"There are 3 areas: 5F (DC2 5F floor), 3F (DC2 3F AB floor), and Atom Denki floor. Each area enters their own count."},
+        {ja:"看板の色で行き先を判断します。黄色の看板はDC3行き、白色の看板はDC1行きです。パレットのサイズは関係ありません。",
+         en:"Use the signboard color to identify the destination. Yellow = DC3, White = DC1. Pallet size doesn't matter."},
+        {ja:"入力した後は「横持ち開始」で横持ちを登録すると、自動でパレット数が減っていきます。",
+         en:"After entering, each time you register a yokomochi using \"Yokomochi Start\", the count goes down automatically."},
+        {ja:"自動減算でゼロにならない場合は、手入力で残数を0にすることもできます。残数が0になると、対象の進捗ボードのコースに自動でチェックが入ります。",
+         en:"If the count doesn't reach zero automatically, you can manually set it to 0. Once it hits zero, all relevant courses on the progress board get checked off automatically."}
       ]
     },
     {
@@ -3198,8 +3233,6 @@ function manualSections(){
          en:"Priority (urgent) — Urgent routes to finish first. Marked by red, yellow, and blue courses."},
         {ja:"直積み… 倉庫を通さず直接配送するコース。横持ちでは使えません。",
          en:"Direct loading — A course delivered directly without going through the warehouse. Can't be used for yokomochi."},
-        {ja:"ロール… アカウントの種類。現場／閲覧専用／納品先確認など。",
-         en:"Role — The account type, such as Worker, View-only, or Delivery."},
         {ja:"休日モード… 土日祝用の特別モード。いくつかの制限が外れます。",
          en:"Holiday Mode — A special mode for weekends and holidays that lifts some restrictions."},
         {ja:"PL（パレット）… 荷物を乗せる台。1PL＝台1枚分。",
@@ -3231,7 +3264,7 @@ function manualDraw(key){
     <div style="padding:8px">
       <div style="background:#fbbf24;border-radius:8px;text-align:center;padding:12px;font-weight:800;font-size:13px;color:#1e293b">📷 ${ja?"横持ち開始":"Yokomochi Start"}</div>
       <div style="background:#0d9488;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📦 ${ja?"パレット 残り 0 PL":"Pallets left 0 PL"}</div>
-      <div style="background:#7c3aed;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📊 ${ja?"物量入力":"Volume Input"}</div>
+      <div style="background:#7c3aed;color:#fff;border-radius:8px;text-align:center;padding:9px;font-weight:800;font-size:11px;margin-top:6px">📊 ${ja?"物量入力":"Volume input"}</div>
     </div>`);
   if(key==="register") return frame(`
     <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">${ja?"横持ちを登録":"New Yokomochi"}</div>
@@ -3256,7 +3289,7 @@ function manualDraw(key){
       <div style="text-align:center;color:#64748b;margin-top:4px;font-size:9px">2 / 3 ${ja?"チェック":"checked"}</div>
     </div>`);
   if(key==="volume") return frame(`
-    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">${ja?"物量入力":"Volume Input"}</div>
+    <div style="background:#fff;padding:7px 9px;font-weight:800;font-size:12px">${ja?"物量入力":"Volume input"}</div>
     <div style="padding:8px;font-size:10px">
       ${(ja?["シャーク","シロカ","ドリーム"]:["Shark","Siroca","Dream"]).map(n=>`<div style="display:flex;align-items:center;gap:5px;margin-bottom:4px"><span style="width:46px;font-weight:bold;color:#2563eb;font-size:9px">${n}</span><span style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:5px;padding:4px 6px;color:#94a3b8">120</span></div>`).join("")}
       <div style="background:#059669;color:#fff;border-radius:6px;text-align:center;padding:7px;font-weight:800;margin-top:5px">💾 ${ja?"保存する":"Save"}</div>
@@ -3371,9 +3404,10 @@ function renderSettings(){
 function setLang(l){ lang=l; localStorage.setItem("lang",l); render(); }
 
 /* グローバル公開（onclick用） */
-Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,toggleHoliday,setPreviewRole,topbarTranslate});
+Object.assign(window,{go,enterWorker,enterAdmin,logout,saveRecord,addCourse,addCourseG,addCand,pickOki,mixToggle,mixPick,mixRemove,mixConfirm,qrScan,closeQr,onQrScan,qrToggle,snapShot,toggleYoko,palAdjust,openPhoto,updateAnom,markComplete,toggleCourse,tapCoursePl,confirmDest,delRecord,restoreRecord,exportCsv,setLang,masterAdd,masterEdit,masterDel,masterMove,masterColor,masterSortByColor,masterSortInGroup,masterUpload,renderSearch,renderHistory,renderMaster,volSave,masterVolAdd,masterVolDel,masterVolMove,masterVolSave,pickDest,pickTruck,saveAddMore,volRecalc,addDirectLoadCourse,delDirectLoadCourse,toggleHoliday,setPreviewRole,topbarTranslate,toast});
 window.regPhotos=regPhotos; window.regCourses=regCourses; window.drawPhotos=drawPhotos; window.drawCourses=drawCourses; window.sf=sf; window.hf=hf; window.mf=mf;
 window.renderRouteRecords=renderRouteRecords; window.deleteRouteRecord=deleteRouteRecord; window.saveRouteRecord=saveRouteRecord; window.routeExportCsv=routeExportCsv; window.updateRouteRecord=updateRouteRecord; window.toggleEditRec=toggleEditRec;
+window.dashExportCsv=dashExportCsv;
 window.editUserRole=editUserRole; window.deleteUserRole=deleteUserRole; window.addUserRole=addUserRole;
 window.setUiSize=setUiSize; window.openSizePicker=openSizePicker; window.applyUiSize=applyUiSize;
 window.renderManual=renderManual; window.manualMarkSeen=manualMarkSeen;
