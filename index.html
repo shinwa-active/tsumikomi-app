@@ -586,6 +586,8 @@ async function volSave(){
   }
   // ── 出荷量実績(route_records)へ日付つきで自動同期 ──
   await syncVolToRoute(rows);
+  // ── 物量実績を volume_history へ日付つきで保存（予測機能の下準備） ──
+  await saveVolumeHistory(rows);
   toast(lang==="ja"?"物量を保存しました":"Saved");
   await loadVol();
   go("home");
@@ -3063,10 +3065,135 @@ async function masterUpload(){
   toast((lang==="ja"?added+"件をクラウドに引き継ぎました":added+" items uploaded"));
 }
 
-/* ===================== 取扱説明書（マニュアル） ===================== *
- * MANUAL_VERSION を上げ、MANUAL_CHANGELOG に項目を足すと「新着」案内が自動で出ます。
- * 各セクションに screenshot を後から差し込めるよう img プロパティを用意（今は未使用）。
- * ================================================================== */
+/* =====================================================================
+ * 【下準備】物量予測・積込完了予測 ロジック予約
+ * 画面への表示は実績データが十分に蓄積されてから実装する。
+ * 現時点では「実績の保存」と「計算関数の骨格」のみ用意。
+ * ===================================================================*/
+
+/* ── ① 物量実績を volume_history へ日付つきで保存（volSave時に呼ぶ） ──
+ * volume_shipmentは当日値の上書きのみのため、日別の履歴が残らない。
+ * このテーブルに保存しておくことで、将来「通常比○%」計算の元データになる。
+ * DB側に volume_history テーブルが必要（prepare_prediction.sql を先に実行）。 */
+async function saveVolumeHistory(rows){
+  try{
+    const today=todayStr();
+    const LABEL_TO_KEY={シャーク:"shark",シロカ:"siroca",ドリーム:"dream",パイオニア:"pioneer",アトム電器:"atom"};
+    const upserts=[];
+    for(const row of rows){
+      const vrow=vol.find(x=>x.id===row.id); if(!vrow) continue;
+      if(row.today_value==null || row.today_value===0) continue;
+      const cap=(row.today_value!=null && vrow.productivity!=null && vrow.work_hours!=null && row.today_attend!=null)
+        ? Math.round(vrow.productivity * vrow.work_hours * row.today_attend) : null;
+      upserts.push({
+        record_date:      today,
+        shipper_label:    vrow.label||"",
+        shipper_key:      LABEL_TO_KEY[(vrow.label||"").trim()]||null,
+        value:            row.today_value,
+        attend:           row.today_attend||null,
+        productivity:     vrow.productivity||null,
+        work_hours:       vrow.work_hours||null,
+        capacity:         cap,
+        saved_by:         user?.email||null,
+        updated_at:       new Date().toISOString()
+      });
+    }
+    if(!upserts.length) return;
+    await sb.from("volume_history").upsert(upserts,{onConflict:"record_date,shipper_label"});
+  }catch(e){ /* 履歴保存失敗はメイン処理を止めない */ }
+}
+
+/* ── ② 物量予測計算（実績蓄積後に画面へ反映する） ──────────────────
+ * 「今日は通常比○%」= 今日の合計 / 直近N日の平均
+ * 「○時頃出荷終了予測」= 開始時刻 + 今日の物量 / 生産性 / 人数
+ * ※ 現時点では計算ロジックのみ。戻り値は使わない（表示しない）。     */
+function calcVolumeAlert(historyRows, todayVolRows){
+  try{
+    const today=todayStr();
+    // 今日の合計
+    const todayTotal=todayVolRows.reduce((s,r)=>{
+      return s+(r.updated_date===today ? (r.today_value||0) : 0);
+    },0);
+    if(!todayTotal) return null;
+
+    // 直近30日の平均（除く今日）
+    const past=historyRows.filter(r=>r.record_date!==today);
+    if(past.length<5) return null; // 実績5日未満は予測しない
+    const avgTotal=past.reduce((s,r)=>s+(r.value||0),0)/past.length;
+    if(!avgTotal) return null;
+    const ratio=Math.round((todayTotal/avgTotal)*100); // 通常比（%）
+
+    // 出荷終了予測（全荷主合計の処理能力ベース）
+    const totalCapacity=todayVolRows.reduce((s,r)=>{
+      if(r.updated_date!==today) return s;
+      const cap=calcCapacity(r); // 既存のcalcCapacity関数を流用
+      return s+(cap||0);
+    },0);
+    let finishHhmm=null;
+    if(totalCapacity>0){
+      const startHour=6; // 出荷開始基準時刻（6:00）
+      const hoursNeeded=todayTotal/totalCapacity*8; // 8時間基準で換算
+      const finishMin=Math.round(startHour*60+hoursNeeded*60);
+      finishHhmm=`${String(Math.floor(finishMin/60)).padStart(2,"0")}:${String(finishMin%60).padStart(2,"0")}`;
+    }
+    // 将来の表示用に返す（今は使わない）
+    return { ratio, todayTotal, avgTotal, finishHhmm };
+  }catch(e){ return null; }
+}
+
+/* ── ③ 積込完了予測（実績蓄積後に画面へ反映する） ──────────────────
+ * 各トラックの「1回転時間」と「1回転PL数」を load_records から計算する。
+ * departed_at（出発）と returned_at（帰還）が蓄積されてから使える。
+ * 「パレット残り○PL / 1回転PL × 1回転時間 + 現在時刻」= 完了予測時刻
+ * ※ 現時点は計算骨格のみ。表示なし。                                */
+function calcLoadingFinishForecast(records, palletRemainRows){
+  try{
+    const now=new Date();
+    const results=[];
+
+    // トラック別に1回転時間・PLを集計（departed_at と returned_at が両方ある実績のみ）
+    const truckStats={};
+    records.filter(r=>r.departed_at&&r.returned_at&&!r.deleted_at).forEach(r=>{
+      const truck=r.truck||"不明";
+      const minPerRound=Math.round((new Date(r.returned_at)-new Date(r.departed_at))/60000);
+      const pl=r.pallets||1;
+      if(!truckStats[truck]) truckStats[truck]={rounds:[],totalPl:0,count:0};
+      truckStats[truck].rounds.push(minPerRound);
+      truckStats[truck].totalPl+=pl;
+      truckStats[truck].count++;
+    });
+
+    // パレット残数ごとに完了予測を計算
+    palletRemainRows.forEach(p=>{
+      const remain=palBase(p); if(!remain) return;
+      const label=p.label||""; // 積み地ラベル（例：DC2 5F）
+
+      // その積み地に対応するトラックの平均値を使う（将来：積み地×トラックで絞り込み）
+      const allStats=Object.values(truckStats);
+      if(!allStats.length) return;
+
+      const avgMinPerRound=allStats.reduce((s,t)=>s+(t.rounds.reduce((a,b)=>a+b,0)/t.rounds.length),0)/allStats.length;
+      const avgPlPerRound=allStats.reduce((s,t)=>s+t.totalPl/t.count,0)/allStats.length;
+
+      if(!avgMinPerRound||!avgPlPerRound) return;
+      const roundsNeeded=Math.ceil(remain/avgPlPerRound);
+      const minutesNeeded=roundsNeeded*avgMinPerRound;
+      const finishAt=new Date(now.getTime()+minutesNeeded*60000);
+      const hh=String(finishAt.getHours()).padStart(2,"0");
+      const mm=String(finishAt.getMinutes()).padStart(2,"0");
+      // 将来の表示用に返す（今は使わない）
+      results.push({ label, remain, roundsNeeded, finishHhmm:`${hh}:${mm}` });
+    });
+
+    return results; // 例：[{label:"DC2 5F", remain:12, roundsNeeded:4, finishHhmm:"18:45"}]
+  }catch(e){ return []; }
+}
+
+/* ── 下準備ここまで ──────────────────────────────────────────────── */
+
+// ===================== 取扱説明書（マニュアル） =====================
+// MANUAL_VERSION を上げ、MANUAL_CHANGELOG に項目を足すと「新着」案内が自動で出ます。
+// 各セクションに screenshot を後から差し込めるよう img プロパティを用意（今は未使用）。
 const MANUAL_VERSION = 5;            // 機能変更のたびに +1
 const MANUAL_UPDATED  = "2026-06-27"; // 最終更新日
 
