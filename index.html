@@ -3064,11 +3064,22 @@ async function masterUpload(){
  * MANUAL_VERSION を上げ、MANUAL_CHANGELOG に項目を足すと「新着」案内が自動で出ます。
  * 各セクションに screenshot を後から差し込めるよう img プロパティを用意（今は未使用）。
  * ================================================================== */
-const MANUAL_VERSION = 4;            // 機能変更のたびに +1
+const MANUAL_VERSION = 5;            // 機能変更のたびに +1
 const MANUAL_UPDATED  = "2026-06-27"; // 最終更新日
 
 /* 更新履歴（新しいものを上に。verは導入時のMANUAL_VERSION） */
 const MANUAL_CHANGELOG = [
+  { ver:5, date:"2026-06-27",
+    ja:[
+      "説明書に「直積みに変更コース」の説明を追加（入力方法・完全ブロックと荷主別の違い）。",
+      "説明書に「コース記号の文字は自動で変換されます」の説明を追加。",
+      "休日モードが自動化されました（土曜：自動ON、日祝：自動ON、平日：管理者のみ変更可）。"
+    ],
+    en:[
+      "Added \"Direct Loading Courses\" section to the Manual (how to enter, full block vs. shipper-specific).",
+      "Added \"Course Codes Are Auto-Converted\" section to the Manual.",
+      "Holiday Mode is now automatic (Saturdays: auto ON, Sundays/holidays: auto ON, weekdays: admin only)."
+    ]},
   { ver:4, date:"2026-06-27",
     ja:[
       "ホームの「物量入力」で保存した数が、出荷量実績の集計に自動で反映されるようになりました。",
@@ -3186,6 +3197,44 @@ function manualSections(){
       ],
       note:{ja:"手で入力したコード記号は、登録が終わると自動で次回の候補ボタンになります。手動でマスタに足す必要はありません。",
             en:"Codes you type by hand become suggestion buttons next time automatically—no need to add them manually."}
+    },
+    {
+      id:"directload", icon:"🚫",
+      title:{ja:"直積みに変更コース（その日だけ横持ちを使わないコース）", en:"Direct Loading Courses (Bypassing Yokomochi for the Day)"},
+      paras:[
+        {ja:"「直積みに変更コース」とは、その日だけ横持ちを使わず、荷物を直接配送に回すコースのことです。ホーム画面に「⚠ 今日の直積みに変更コース」というパネルがあり、ここで登録・削除ができます。",
+         en:"A \"direct loading course\" is one that skips yokomochi for the day and goes straight to delivery. You can register and remove them in the \"⚠ Today: changed to direct loading\" panel on the Home screen."},
+        {ja:"登録のしかたは、まず「対象」を選び、次にコース記号を入力して「＋追加」を押します。",
+         en:"To register: first pick a Target, then type the course code and tap \"＋ Add\"."}
+      ],
+      list:[
+        {ja:"「全て（完全ブロック）」を選んだ場合：横持ち登録画面でそのコースのボタンが赤くなり、完全に選べなくなります。どの荷主の荷物であっても使用不可です。",
+         en:"\"All (full block)\": the course button turns red on the registration screen and cannot be selected at all, regardless of shipper."},
+        {ja:"「シャーク・シロカ・ドリーム・パイオニア・アトム電器」など荷主を指定した場合：そのコースのボタンに⚠マークがつき、押すと「○○では本日直積みです。それでも追加しますか？」という確認が出ます。「はい」を押せば追加できます。ほかの荷主には影響しません。",
+         en:"Specifying a shipper (e.g. Shark, Siroca): the course button gets a ⚠ mark. Tapping it shows \"Direct loading for ___ today. Add anyway?\" You can still add it if needed. Other shippers are not affected."}
+      ],
+      note:{ja:"登録したコースは、その日の横持ち登録画面に即座に反映されます。間違えた場合はパネルの「×」を押すと削除できます。",
+            en:"Registered courses take effect on the registration screen immediately. Tap \"×\" in the panel to remove a mistaken entry."}
+    },
+    {
+      id:"normalize", icon:"🔤",
+      title:{ja:"コース記号の文字は自動で変換されます", en:"Course Codes Are Auto-Converted"},
+      paras:[
+        {ja:"コース記号を入力するとき、小文字や半角で入力しても、自動で正しい形に変換されます。打ちやすい形で入力してOKです。",
+         en:"When entering a course code, lowercase or half-width characters are automatically converted to the correct format. Just type however is easiest."}
+      ],
+      list:[
+        {ja:"英字の小文字 → 大文字に変換（例：「3p」と入力 → 「3P」になる）",
+         en:"Lowercase letters → uppercase (e.g. type \"3p\" → becomes \"3P\")"},
+        {ja:"全角英数字 → 半角に変換（例：「３Ｐ」と入力 → 「3P」になる）",
+         en:"Full-width alphanumerics → half-width (e.g. type \"３Ｐ\" → becomes \"3P\")"},
+        {ja:"半角カタカナ → 全角カタカナに変換（例：「ｱ1」と入力 → 「ア1」になる）",
+         en:"Half-width katakana → full-width katakana (e.g. type \"ｱ1\" → becomes \"ア1\")"},
+        {ja:"半角記号 → 全角記号に変換（マスタの表記に合わせて自動調整されます）",
+         en:"Half-width symbols → full-width symbols (auto-adjusted to match master data)"}
+      ],
+      note:{ja:"変換はコース記号の入力欄でのみ行われます。コメント欄や他の入力欄は変換されません。",
+            en:"Conversion applies only to course code input fields, not to comments or other fields."}
     },
     {
       id:"firstpri", icon:"🔴",
@@ -3333,8 +3382,8 @@ function manualSections(){
       list:[
         {ja:"第一優先（急ぎ）… 先に終わらせる急ぎのルート。赤・黄・青のコースが対応。",
          en:"Priority (urgent) — Urgent routes to finish first. Marked by red, yellow, and blue courses."},
-        {ja:"直積み… 倉庫を通さず直接配送するコース。横持ちでは使えません。",
-         en:"Direct loading — A course delivered directly without going through the warehouse. Can't be used for yokomochi."},
+        {ja:"直積み… 横持ちを使わず直接配送するコース。その日だけ「直積みに変更」することもできます。",
+         en:"Direct loading — A course that bypasses yokomochi and goes straight to delivery. Can also be set to \"direct loading\" just for that day."},
         {ja:"休日モード… 土日祝用の特別モード。いくつかの制限が外れます。",
          en:"Holiday Mode — A special mode for weekends and holidays that lifts some restrictions."},
         {ja:"PL（パレット）… 荷物を乗せる台。1PL＝台1枚分。",
